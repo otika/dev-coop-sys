@@ -28,8 +28,8 @@
 #include "ns3/address.h"
 #include "ns3/event-id.h"
 #include "ns3/application.h"
+#include "ns3/mobility-model.h"
 #include "ns3/traced-callback.h"
-#include "ns3/v2v-mobility-model.h"
 #include "ns3/cluster-sap.h"
 #include "ns3/cluster-header.h"
 
@@ -127,6 +127,12 @@ private:
 	 */
     void Send (void);
 
+    /**
+     *
+     * \brief Send packet with ClusterInfoHeader
+     */
+    void SendClusterInfo(void);
+
 	/**
 	 * \brief Handle a Connection Succeed event
 	 * \param socket the connected socket
@@ -146,7 +152,7 @@ private:
 	 * \brief Check if the speed of the node is the lowest in the cluster
 	 * \return boolean
 	 */
-    bool IsSlowestNode (void);
+    bool HasMaxId (void);
 
     /**
      * \brief Update status
@@ -164,14 +170,6 @@ private:
 	 */
     double SuitabilityCheck (void);
 
-    /**
-     * @brief IsStable checks if the relative velocity of two neighbors
-     * is under the threshold
-     * @param velocity, the velocity of the neighbor node
-     * @return true if stable, false otherwise
-     */
-    bool IsStable (Vector velocity);
-
 	/**
 	 * \brief Start the clusterHead election procedure
 	 */
@@ -185,7 +183,7 @@ private:
 	/**
 	 * \brief Send Initiate Cluster message
 	 */
-    void SendInitiateCluster (void);
+    //void SendInitiateCluster (void);
 
 	/**
 	 * \brief Report the status of the node
@@ -282,10 +280,10 @@ private:
 	/// Node information for cluster formation
     EventId m_chElectionEvent;                          //!< Event id of pending "CH Request" event
     ClusterSap::NeighborInfo m_currentMobility;
-    Ptr<V2vMobilityModel> m_mobilityModel;
+    Ptr<MobilityModel> m_mobilityModel;
     enum NodeStatus m_status;                           //!< Node Degree
     std::map<uint64_t, ClusterSap::NeighborInfo> m_clusterList;     //!< Cluster List
-    std::map<uint64_t, ClusterSap::NeighborInfo> m_rStableList;     //!< rStable Neighbors
+    //std::map<uint64_t, ClusterSap::NeighborInfo> m_rStableList;     //!< rStable Neighbors
     std::map<uint64_t, ClusterSap::NeighborInfo> m_2rStableList;    //!< 2rStable Neighbors
 
     //!< Incident Info

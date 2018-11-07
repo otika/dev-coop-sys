@@ -32,7 +32,7 @@ namespace ns3 {
 
 ClusterControlClientHelper::ClusterControlClientHelper(std::string protocolLocal, Address addressLocal,
     std::string protocolListeningLocal, Address addressListeningLocal,
-    Ptr<V2vMobilityModel> mobilityModel, double timeWindow, uint32_t maxUes, double minimumTdmaSlot, double clusterTimeMetric)
+    Ptr<MobilityModel> mobilityModel, double timeWindow, uint32_t maxUes, double minimumTdmaSlot, double clusterTimeMetric)
 {
   m_factory.SetTypeId ("ns3::ClusterControlClient");
   m_factory.Set ("ProtocolSendingLocal", StringValue (protocolLocal));

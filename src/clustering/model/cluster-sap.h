@@ -46,8 +46,7 @@ public:
         uint64_t clusterId;
 
         Vector position;
-        Vector velocity;
-        Vector direction;
+
         NodeDegree degree;
     };
 

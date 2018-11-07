@@ -55,6 +55,7 @@ struct Rgb {
     uint8_t r, g, b;
 };
 
+template<class T> void shuffle(T ary[],int size);
 Rgb getColor(int id);
 Rgb getNewColor(uint8_t differential);
 void StatusTraceCallback (Ptr<const ClusterControlClient> app);
@@ -75,16 +76,15 @@ int main(int argc, char *argv[]) {
     /*---------------------- Simulation Default Values ---------------------*/
     std::string phyMode ("OfdmRate6MbpsBW10MHz");
 
-    uint16_t numberOfUes = 20;
-    int column = 3;
-    double distance = 50;
+    uint16_t numberOfUes = 99;
+    int column = 5;
+    double distance = 60;
 
     double minimumTdmaSlot = 0.001;         /// Time difference between 2 transmissions
     double clusterTimeMetric = 5.0;         /// Clustering Time Metric for Waiting Time calculation
-    double speedVariation = 1.0;
     double incidentWindow = 30.0;
 
-    double simTime = 20.0;
+    double simTime = 10.0;
     /*----------------------------------------------------------------------*/
 
 
@@ -104,6 +104,7 @@ int main(int argc, char *argv[]) {
     CommandLine cmd;
     cmd.AddValue("ueNumber", "Number of UE", numberOfUes);
     cmd.AddValue("simTime", "Simulation Time in Seconds", simTime);
+    cmd.Parse (argc, argv);
 
     NS_LOG_INFO("");
     NS_LOG_INFO("|---"<< " SimTime -> " << simTime <<" ---|\n");
@@ -124,26 +125,21 @@ int main(int argc, char *argv[]) {
 
     /*-------------------- Install Mobility Model in Ue --------------------*/
     MobilityHelper ueMobility;
-    ueMobility.SetMobilityModel ("ns3::V2vMobilityModel",
-         "Mode", StringValue ("Time"),
-         "Time", StringValue ("40s"),
-         "Speed", StringValue ("ns3::ConstantRandomVariable[Constant=5.0]"),
-         "Bounds", RectangleValue (Rectangle (0, 2000, 0, 1000)));
+
+    ueMobility.SetMobilityModel ("ns3::ConstantPositionMobilityModel");
+
     ueMobility.Install(nodes);
 
     /// Create a 3 line grid of vehicles
+    int list[numberOfUes];
     for (uint16_t i = 0; i < numberOfUes; i++)
     {
-        // if(i % 3 == 0){
-        //     nodes.Get (i)->GetObject<MobilityModel> ()->SetPosition (Vector (i*5, 0, 0));
-        // }
-        // else if(i % 3 == 1){
-        //     nodes.Get (i)->GetObject<MobilityModel> ()->SetPosition (Vector (i*5, 3, 0));
-        // }
-        // else{
-        //     nodes.Get (i)->GetObject<MobilityModel> ()->SetPosition (Vector (i*5, 6, 0));
-        //  }
-        nodes.Get (i)->GetObject<MobilityModel> ()->SetPosition (Vector ( (i-i%column)/column*distance, i%column*distance, 0));
+    	list[i] = i;
+    }
+    shuffle<int>(list,numberOfUes);
+    for (uint16_t i = 0; i < numberOfUes; i++)
+    {
+        nodes.Get(list[i])->GetObject<MobilityModel> ()->SetPosition (Vector ( (i-i%column)/column*distance, i%column*distance, 0));
     }
     /*----------------------------------------------------------------------*/
 
@@ -194,10 +190,10 @@ int main(int argc, char *argv[]) {
     for (uint32_t u = 0; u < nodes.GetN(); ++u) {
 
         //!< Initial TDMA UE synchronization Function
-        double tdmaStart = (u+1)*minimumTdmaSlot;
+		// double tdmaStart = (u+1)*minimumTdmaSlot;
+        double tdmaStart = (nodes.GetN() - u)*minimumTdmaSlot;
 
-        Ptr<V2vMobilityModel> mobilityModel = nodes.Get(u)->GetObject<V2vMobilityModel>();
-        mobilityModel->SetSpeedVariation(speedVariation);
+        Ptr<ConstantPositionMobilityModel> mobilityModel = nodes.Get(u)->GetObject<ConstantPositionMobilityModel>();
 
         // クラスタリング機能
         ClusterControlClientHelper ueClient("ns3::UdpSocketFactory", Address(InetSocketAddress(Ipv4Address::GetBroadcast(), controlPort)),
@@ -257,18 +253,12 @@ void StatusTraceCallback (Ptr<const ClusterControlClient> app)
     ClusterSap::NodeDegree degree = info.degree;
 
     // Set color
+    if(degree == ClusterSap::STANDALONE){
+          rgb = {255, 255, 255};
+    }
     if(degree == ClusterSap::CM || degree == ClusterSap::CH)
     {
       rgb = getColor(clusterId);
-    }
-    else if(degree == ClusterSap::STANDALONE){
-      rgb = {255, 255, 255};
-    }
-    else if(degree == ClusterSap::DEGREE_STATES){
-      rgb = {0, 0, 0};
-    }
-    else{
-      rgb = {0, 0, 0};
     }
 
     pAnim->UpdateNodeColor(id, rgb.r, rgb.g, rgb.b);
@@ -294,14 +284,16 @@ Rgb getColor(int id)
   // Load rgb from output history
   try {
     _rgb = rgb.at(id);
-  }  catch(const std::out_of_range oor) {  }
+  }  catch(const std::out_of_range oor) {
+	  _rgb = (Rgb) {255, 255, 255};
+  }
 
   // Generate New Color
-  if(_rgb.r == 255 || _rgb.g == 255 || _rgb.b == 255){
+  if(_rgb.r == 255 && _rgb.g == 255 && _rgb.b == 255){
     bool duplicated = false;
     do{
       duplicated = false;
-      _rgb = getNewColor(20);
+      _rgb = getNewColor(3);
       //for(auto itr = std::begin(rgb); itr != std::end(rgb); ++itr){
       for(auto itr : rgb){
         if(_rgb.r == itr.r && _rgb.g == itr.g && _rgb.b == itr.b)
@@ -323,14 +315,29 @@ Rgb getNewColor(uint8_t differential){
     differential = 1;
   }
   static std::random_device rnd;     // 非決定的な乱数生成器を生成
-  static std::mt19937 mt(rnd());     //  メルセンヌ・ツイスタの32ビット版、引数は初期シード値
+  static std::mt19937 mt(12345);     //  メルセンヌ・ツイスタの32ビット版、引数は初期シード値
 
   std::uniform_int_distribution<> rand255(0, 255 / differential);
 
   int _r = rand255(mt) * differential;
   int _g = rand255(mt) * differential;
   int _b = rand255(mt) * differential;
+  Rgb rgb = {(uint8_t)_r, (uint8_t)_g, (uint8_t)_b};
 
-  Rgb rgb = {_r, _g, _b};
   return rgb;
+}
+
+template<class T> void shuffle(T ary[],int size)
+{
+	static std::random_device rnd;     // 非決定的な乱数生成器を生成
+	static std::mt19937 mt(12345);     //  メルセンヌ・ツイスタの32ビット版、引数は初期シード値
+	std::uniform_int_distribution<> rand(0, size - 1);
+
+	for(int i=0;i<size;i++)
+    {
+        int j = rand(mt);
+        T t = ary[i];
+        ary[i] = ary[j];
+        ary[j] = t;
+    }
 }

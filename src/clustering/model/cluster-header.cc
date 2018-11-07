@@ -80,8 +80,7 @@ ClusterInfoHeader::Print(std::ostream &os) const {
            << "ClusterId=" << m_mobilityInfo.clusterId
            << "Degree=" << m_mobilityInfo.degree
            << "Position=" << m_mobilityInfo.position
-           << "Velocity=" << m_mobilityInfo.velocity
-           << "Direction=" << m_mobilityInfo.direction <<")";
+           <<")";
 }
 
 uint32_t
@@ -265,8 +264,7 @@ FormClusterHeader::Print(std::ostream &os) const {
             << "ClusterId=" << m_mobilityInfo.clusterId
             << "Degree=" << m_mobilityInfo.degree
             << "Position=" << m_mobilityInfo.position
-            << "Velocity=" << m_mobilityInfo.velocity
-            << "Direction=" << m_mobilityInfo.direction <<")";
+            <<")";
 }
 
 uint32_t

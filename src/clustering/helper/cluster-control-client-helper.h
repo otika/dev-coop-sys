@@ -51,7 +51,7 @@ public:
      */
     ClusterControlClientHelper(std::string protocolLocal, Address addressLocal,
         std::string protocolListeningLocal, Address addressListeningLocal,
-        Ptr<V2vMobilityModel> mobilityModel, double timeFactor, uint32_t maxUes, double minimumTdmaSlot, double clusterTimeMetric);
+        Ptr<MobilityModel> mobilityModel, double timeFactor, uint32_t maxUes, double minimumTdmaSlot, double clusterTimeMetric);
 
 	/**
 	 * Helper function used to set the underlying application attributes.
@@ -104,4 +104,4 @@ private:
 
 } // namespace ns3
 
-#endif /* V2V_CONTROL_CLIENT_HELPER_H */
+#endif /* CKUSTER_CONTROL_CLIENT_HELPER_H */
