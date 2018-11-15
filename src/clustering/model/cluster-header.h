@@ -118,6 +118,15 @@ public:
     uint64_t GetClusterId(void) const;
 
     /**
+     * \param nodeId the id of the node
+     */
+    void SetMobilityInfo(ClusterSap::NeighborInfo mobilityInfo);
+    /**
+     * \return the id of the node
+     */
+    ClusterSap::NeighborInfo GetMobilityInfo(void) const;
+
+    /**
      * \brief Get the type ID.
      * \return the object TypeId
      */
@@ -133,6 +142,7 @@ private:
     uint64_t m_clusterId;       //!< Cluster id
     uint64_t m_ts;              //!< Timestamp
     uint64_t m_seq;             //!< Sequence number
+    ClusterSap::NeighborInfo m_mobilityInfo;         //!< Mobile Info
 
 };
 

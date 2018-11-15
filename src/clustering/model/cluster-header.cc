@@ -162,6 +162,18 @@ InitiateClusterHeader::GetClusterId(void) const {
     return m_clusterId;
 }
 
+void
+InitiateClusterHeader::SetMobilityInfo(ClusterSap::NeighborInfo mobilityInfo){
+    NS_LOG_FUNCTION (this << mobilityInfo.imsi);
+    m_mobilityInfo = mobilityInfo;
+}
+
+ClusterSap::NeighborInfo
+InitiateClusterHeader::GetMobilityInfo(void) const {
+    NS_LOG_FUNCTION (this);
+    return m_mobilityInfo;
+}
+
 TypeId
 InitiateClusterHeader::GetTypeId(void) {
     static TypeId tid =
@@ -183,7 +195,7 @@ InitiateClusterHeader::Print(std::ostream &os) const {
 uint32_t
 InitiateClusterHeader::GetSerializedSize(void) const {
     NS_LOG_FUNCTION (this);
-    return sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint64_t);
+    return sizeof(uint64_t) + sizeof(uint64_t) + sizeof(uint64_t) + sizeof(ClusterSap::NeighborInfo);
 }
 
 void
@@ -194,6 +206,10 @@ InitiateClusterHeader::Serialize(Buffer::Iterator start) const {
     i.WriteHtonU64(m_clusterId);
     i.WriteHtonU64(m_ts);
     i.WriteHtonU64(m_seq);
+    // Write mobility structure
+    unsigned char temp[sizeof(ClusterSap::NeighborInfo)];
+    memcpy( temp, &m_mobilityInfo, sizeof(ClusterSap::NeighborInfo));
+    i.Write(temp, sizeof(ClusterSap::NeighborInfo));
 }
 
 uint32_t
@@ -204,6 +220,10 @@ InitiateClusterHeader::Deserialize(Buffer::Iterator start) {
     m_clusterId = i.ReadNtohU64 ();
     m_ts = i.ReadNtohU64 ();
     m_seq = i.ReadNtohU64 ();
+
+    unsigned char temp[sizeof(ClusterSap::NeighborInfo)];
+    i.Read(temp, sizeof(ClusterSap::NeighborInfo));
+    memcpy(&m_mobilityInfo, &temp, sizeof(ClusterSap::NeighborInfo) );
 
     return GetSerializedSize();
 }

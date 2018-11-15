@@ -36,7 +36,6 @@
 #include "ns3/random-variable-stream.h"
 #include "ns3/cluster-control-client-helper.h"
 #include "ns3/cluster-sap.h"
-#include "ns3/v2v-mobility-model.h"
 
 #include <iostream>
 #include <vector>
@@ -45,6 +44,8 @@
 
 #define SIMULATION_TIME_FORMAT(s) Seconds(s)
 
+#define STD_NODE_SIZE 0.1
+#define WIFI_POWER -25
 
 using namespace ns3;
 NS_LOG_COMPONENT_DEFINE("ClusteringExample");
@@ -77,14 +78,14 @@ int main(int argc, char *argv[]) {
     std::string phyMode ("OfdmRate6MbpsBW10MHz");
 
     uint16_t numberOfUes = 99;
-    int column = 5;
-    double distance = 60;
+    int column = 9;
+    double distance = 0.8;
 
     double minimumTdmaSlot = 0.001;         /// Time difference between 2 transmissions
     double clusterTimeMetric = 5.0;         /// Clustering Time Metric for Waiting Time calculation
     double incidentWindow = 30.0;
 
-    double simTime = 10.0;
+    double simTime = 5.0;
     /*----------------------------------------------------------------------*/
 
 
@@ -154,10 +155,11 @@ int main(int argc, char *argv[]) {
     // wifiPhy.SetPcapDataLinkType (YansWifiPhyHelper::DLT_IEEE802_11);
     // wifiPhy.Set ("TxPowerStart", DoubleValue(32));
     // wifiPhy.Set ("TxPowerEnd", DoubleValue(32));
-    // wifiPhy.Set ("TxGain", DoubleValue(12));
-    // wifiPhy.Set ("RxGain", DoubleValue(12));
+    wifiPhy.Set ("TxGain", DoubleValue(WIFI_POWER));
+    wifiPhy.Set ("RxGain", DoubleValue(WIFI_POWER));
     // wifiPhy.Set ("EnergyDetectionThreshold", DoubleValue(-61.8));
     // wifiPhy.Set ("CcaMode1Threshold", DoubleValue(-64.8));
+
 
     // using IEEE802.11n
     // WifiMacHelper wifiMac;
@@ -196,8 +198,9 @@ int main(int argc, char *argv[]) {
         Ptr<ConstantPositionMobilityModel> mobilityModel = nodes.Get(u)->GetObject<ConstantPositionMobilityModel>();
 
         // クラスタリング機能
-        ClusterControlClientHelper ueClient("ns3::UdpSocketFactory", Address(InetSocketAddress(Ipv4Address::GetBroadcast(), controlPort)),
-                "ns3::UdpSocketFactory",InetSocketAddress(Ipv4Address::GetAny(), controlPort),
+        ClusterControlClientHelper ueClient("ns3::UdpSocketFactory",
+        		Address(InetSocketAddress(Ipv4Address::GetBroadcast(), controlPort)),
+                "ns3::UdpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), controlPort),
                 mobilityModel, tdmaStart, numberOfUes, minimumTdmaSlot, clusterTimeMetric);
 
         ueClient.SetAttribute ("IncidentWindow", DoubleValue(incidentWindow));
@@ -210,20 +213,20 @@ int main(int argc, char *argv[]) {
 
     pAnim = new AnimationInterface("scratch/clustering-manet.xml");
     pAnim->EnablePacketMetadata (); // Optional
-    // pAnim->EnableIpv4L3ProtocolCounters (Seconds (0), Seconds (10)); // Optional
+     pAnim->EnableIpv4L3ProtocolCounters (Seconds (0), Seconds (10)); // Optional
 
 
    for (uint32_t u = 0; u < nodes.GetN(); ++u) {
-     pAnim->UpdateNodeSize(u, 10.0, 10.0);
+     pAnim->UpdateNodeSize(u, STD_NODE_SIZE, STD_NODE_SIZE);
      pAnim->UpdateNodeColor(u, 255,255,255);
    }
 
     controlApps.Start (Seconds(0.1));
     controlApps.Stop (Seconds(simTime-0.1));
-
-    // AsciiTraceHelper ascii;
-    // wifiPhy.EnableAsciiAll(ascii.CreateFileStream ("scratch/socket-options-ipv4.txt"));
-    // wifiPhy.EnablePcapAll ("scratch/cluser.socket.pcap", false);
+//
+//     AsciiTraceHelper ascii;
+//     wifiPhy.EnableAsciiAll(ascii.CreateFileStream ("scratch/socket-options-ipv4.txt"));
+//     wifiPhy.EnablePcapAll ("scratch/cluser.socket.pcap", false);
 
     /*----------------------------------------------------------------------*/
 
@@ -266,11 +269,11 @@ void StatusTraceCallback (Ptr<const ClusterControlClient> app)
     // Set size
     if(degree == ClusterSap::CH)
     {
-      pAnim->UpdateNodeSize(id, 35, 35);
+      pAnim->UpdateNodeSize(id, STD_NODE_SIZE * 4, STD_NODE_SIZE * 4); // CH
     }
     else
     {
-      pAnim->UpdateNodeSize(id, 20, 20);
+      pAnim->UpdateNodeSize(id, STD_NODE_SIZE * 2, STD_NODE_SIZE * 2); // CM
     }
   }
   return;

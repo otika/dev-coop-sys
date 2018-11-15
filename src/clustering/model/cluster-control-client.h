@@ -127,12 +127,6 @@ private:
 	 */
     void Send (void);
 
-    /**
-     *
-     * \brief Send packet with ClusterInfoHeader
-     */
-    void SendClusterInfo(void);
-
 	/**
 	 * \brief Handle a Connection Succeed event
 	 * \param socket the connected socket

@@ -44,7 +44,7 @@
 #include <cmath>
 #include <limits>
 
-//#define CLUSTER_CONTROL_CLIENT_DEBUG
+// #define CLUSTER_CONTROL_CLIENT_DEBUG
 
 namespace ns3 {
 
@@ -110,7 +110,7 @@ TypeId ClusterControlClient::GetTypeId(void) {
 					"The time to wait between packets", DoubleValue(1.0),
 					MakeDoubleAccessor(&ClusterControlClient::m_timeWindow),
 					MakeDoubleChecker<double>()).AddAttribute("Interval",
-					"The time to wait between packets", TimeValue(Seconds(1.0)),
+					"The time to wait between packets", TimeValue(Seconds(0.3)),
 					MakeTimeAccessor(&ClusterControlClient::m_interval),
 					MakeTimeChecker()).AddAttribute("SendingLocal",
 					"The address of the destination", AddressValue(),
@@ -222,7 +222,7 @@ void ClusterControlClient::StartApplication(void) {
 	ScheduleTransmit(Seconds(m_timeWindow));
 	AcquireMobilityInfo();
 
-	Simulator::Schedule(Seconds(1.5 + m_minimumTdmaSlot * m_maxUes), &ClusterControlClient::UpdateNeighborList, this);
+	Simulator::Schedule(Seconds(m_minimumTdmaSlot * m_maxUes), &ClusterControlClient::UpdateNeighborList, this);
 }
 
 void ClusterControlClient::StartListeningLocal(void) // Called at time specified by Start
@@ -272,7 +272,7 @@ void ClusterControlClient::StopApplication(void) // Called at time specified by 
 				"ClusterControlClient found null socket to close in StopApplication");
 	}
 	Simulator::Cancel(m_sendEvent);
-	Simulator::Cancel(m_sendIncidentEvent);
+	//Simulator::Cancel(m_sendIncidentEvent);
 	StopListeningLocal();
 	// PrintStatistics(std::cout);
 }
@@ -336,9 +336,18 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 				} else {
 					it2r->second = otherInfo;
 				}
+
+				if(m_status == ClusterControlClient::CLUSTER_INITIALIZATION){
+					if(otherInfo.degree == ClusterSap::CH && m_currentMobility.degree == ClusterSap::STANDALONE){
+						m_status = ClusterControlClient::CLUSTER_UPDATE;
+						m_currentMobility.degree = ClusterSap::CM;
+						m_currentMobility.clusterId = otherInfo.clusterId;
+						ScheduleTransmit(Seconds((m_timeWindow)));
+					}
+				}
 				// ClusterInfoHeader @ CLUSTER_UPDATE
 				if (m_status == ClusterControlClient::CLUSTER_UPDATE || m_status == ClusterControlClient::CLUSTER_HEAD_ELECTION ) {
-					if (m_currentMobility.degree == ClusterSap::CH) {
+					if (m_currentMobility.degree == ClusterSap::CH || m_currentMobility.degree == ClusterSap::CM) {
 						if (otherInfo.clusterId == m_currentMobility.imsi) {
 							std::map<uint64_t, ClusterSap::NeighborInfo>::iterator itc = m_clusterList.find(otherInfo.imsi);
 							if (itc == m_clusterList.end()) {
@@ -363,8 +372,8 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 										m_currentMobility.clusterId = potential.imsi;
 										m_changesCounter++;
 
-										RemoveIncidentSocket();
-										CreateIncidentSocket(from);
+										//RemoveIncidentSocket();
+										//CreateIncidentSocket(from);
 									}
 								}
 							}
@@ -382,8 +391,8 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 							m_currentMobility.clusterId = potential.imsi;
 							m_changesCounter++;
 
-							RemoveIncidentSocket();
-							CreateIncidentSocket(from);
+							//RemoveIncidentSocket();
+							//CreateIncidentSocket(from);
 						} else {
 							NS_LOG_DEBUG(
 									"[HandleRead] => To Become new CH: " << m_currentMobility.imsi);
@@ -405,16 +414,14 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 			}
 
 			else if (item.tid.GetName() == "ns3::InitiateClusterHeader") {
-				if (m_status == ClusterControlClient::CLUSTER_INITIALIZATION) {
+				if (m_status == ClusterControlClient::CLUSTER_INITIALIZATION ) {
 					m_status = ClusterControlClient::CLUSTER_HEAD_ELECTION;
 
 					//!< Parse InitiateClusterHeader Info
 					InitiateClusterHeader initiateCluster;
 					packet->RemoveHeader(initiateCluster);
-//					m_currentMobility.clusterId = initiateCluster.GetClusterId();
-//					m_currentMobility.degree = ClusterSap::CM;
-					m_currentMobility.clusterId = m_currentMobility.imsi;
-					m_currentMobility.degree = ClusterSap::CH;
+					ClusterSap::NeighborInfo chInfo = initiateCluster.GetMobilityInfo();
+
 
 #ifdef CLUSTER_CONTROL_CLIENT_DEBUG
 					std::cout << "id: " << m_currentMobility.imsi << " become CH in HandleRead()@InitiateCluster " << m_currentMobility.clusterId << std::endl;
@@ -422,16 +429,12 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 
 					std::map<uint64_t, ClusterSap::NeighborInfo>::iterator foundIt = m_2rStableList.find(initiateCluster.GetClusterId());
 					if ((foundIt != m_2rStableList.end())) {
+						foundIt->second = chInfo;
 
-						//!< Suitability check [should be applied to r-distance neighbors]
-						double waitingTime = SuitabilityCheck();
-						NS_LOG_UNCOND("[HandleRead] => NodeId: " << m_currentMobility.imsi << " WaitingTime is: " << waitingTime);
-
-						//!< Handle chElection Event
-						m_chElectionEvent = Simulator::Schedule(Seconds(waitingTime), &ClusterControlClient::FormCluster, this);
-
-						// Ptr<UniformRandomVariable> randomIncident = CreateObject<UniformRandomVariable> (); //Nova declaração, conforme atualização da variavel RandomVariableStream
-						// ScheduleIncidentEvent (Seconds (randomIncident->GetValue ((int)waitingTime + 1, m_incidentWindow)));
+						m_status = ClusterControlClient::CLUSTER_UPDATE;
+						m_currentMobility.degree = ClusterSap::CM;
+						m_currentMobility.clusterId = chInfo.clusterId;
+						ScheduleTransmit(Seconds((m_timeWindow)));
 
 					} else {
 						/// Not in 2rStableList
@@ -445,8 +448,8 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 
 			else if (item.tid.GetName() == "ns3::FormClusterHeader") {
 
-				NS_ASSERT((m_status != ClusterControlClient::CLUSTER_HEAD_ELECTION)
-								|| (m_status != ClusterControlClient::CLUSTER_FORMATION));
+//				NS_ASSERT((m_status != ClusterControlClient::CLUSTER_HEAD_ELECTION)
+//								|| (m_status != ClusterControlClient::CLUSTER_FORMATION));
 
 				FormClusterHeader formCluster;
 				packet->RemoveHeader(formCluster);
@@ -481,7 +484,7 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 //							Simulator::Schedule(Seconds(updateTime - Simulator::Now().GetSeconds()),
 //									&ClusterControlClient::UpdateNeighborList, this);
 
-						CreateIncidentSocket(from);
+						//CreateIncidentSocket(from);
 					}
 					else if (m_status == ClusterControlClient::CLUSTER_FORMATION) {
 						NS_LOG_DEBUG("[HandleRead] => NodeId: " << m_currentMobility.imsi << " Node is already a Cluster Member.");
@@ -493,7 +496,6 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 							<< formCluster.GetMobilityInfo().imsi << ", "
 							<< formCluster.GetMobilityInfo().clusterId << ", but it's unknown node" << std::endl;
 #endif
-					StatusReport();
 				}
 			}
 
@@ -617,8 +619,13 @@ uint64_t ClusterControlClient::MergeCheck(void) {
 	double r = 100;              //!< transmition range
 	double rt = 0.0;            //!< Suitability metric for CH  selection
 	double boundary = 0.0;
+
+	// std::cout << "[MergeCheck:" << m_currentMobility.imsi << ", " + ToString(m_currentMobility.degree) + "] ";
+
 	for (std::map<uint64_t, ClusterSap::NeighborInfo>::iterator itSearch =	m_2rStableList.begin(); itSearch != m_2rStableList.end();++itSearch) {
 		ClusterSap::NeighborInfo node = itSearch->second;
+
+		// std::cout << itSearch->first << "[" << ToString(node.degree) << "]" ;
 		if (node.degree == ClusterSap::CH) {
 			rt = r - std::sqrt((m_currentMobility.position.x - node.position.x)	* (m_currentMobility.position.x	- node.position.x)
 									+ (m_currentMobility.position.y	- node.position.y) * (m_currentMobility.position.y - node.position.y));
@@ -630,11 +637,13 @@ uint64_t ClusterControlClient::MergeCheck(void) {
 			if (id == UINT64_MAX || itSearch->first > id) {
 				id = itSearch->first;
 				boundary = rt;
+				//std::cout << "*" ;
 			}
+
 		}
+		//std::cout << ", " ;
 	}
-	NS_LOG_DEBUG(
-			"[MergeCheck] => Returned Id is: " << id << " - with Remaining Time(RT):" << boundary);
+	//std::cout << "[MergeCheck] => Returned Id is: " << id << std::endl;
 	return id;
 }
 
@@ -656,7 +665,6 @@ void ClusterControlClient::FormCluster(void) {
 }
 
 void ClusterControlClient::StatusReport(void) {
-
 	NS_LOG_UNCOND(
 			"\n\n-----------------------------------------------------------------------------");
 	NS_LOG_UNCOND(
@@ -723,7 +731,7 @@ void ClusterControlClient::Send(void) {
 
 	switch (m_status) {
 	case ClusterControlClient::CLUSTER_INITIALIZATION: {
-
+		AcquireMobilityInfo();
 		ClusterInfoHeader clusterInfo;
 		clusterInfo.SetSeq(m_sentCounter);
 		clusterInfo.SetMobilityInfo(m_currentMobility);
@@ -740,10 +748,14 @@ void ClusterControlClient::Send(void) {
 		break;
 	}
 	case ClusterControlClient::CLUSTER_HEAD_ELECTION: {
+		AcquireMobilityInfo();
+		m_currentMobility.degree = ClusterSap::CH;
+		m_currentMobility.clusterId = m_currentMobility.imsi;
 
 		InitiateClusterHeader initiateCluster;
 		initiateCluster.SetSeq(m_sentCounter);
 		initiateCluster.SetClusterId(m_currentMobility.imsi);
+		initiateCluster.SetMobilityInfo(m_currentMobility);
 
 		Ptr<Packet> packet = Create<Packet>(0);
 		packet->AddHeader(initiateCluster);
@@ -752,18 +764,8 @@ void ClusterControlClient::Send(void) {
 		++m_sentCounter;
 		m_formationCounter++;
 
-		// Simulator::Schedule(Seconds(m_minimumTdmaSlot * m_maxUes), &ClusterControlClient::InitiateCluster, this);
-		// std::cout << "scheduled InitiateCluster " << m_minimumTdmaSlot * m_maxUes << " later... : " << m_currentMobility.imsi << std::endl;
-
-		double waitingTime = SuitabilityCheck();
-		NS_LOG_UNCOND("[HandleRead] => NodeId: " << m_currentMobility.imsi << " WaitingTime is: " << waitingTime);
-		//m_chElectionEvent = Simulator::Schedule(Seconds(waitingTime), &ClusterControlClient::FormCluster, this);
-
-		Ptr<UniformRandomVariable> randomIncident = CreateObject<UniformRandomVariable>(); //Nova declaração, conforme atualização da variavel RandomVariableStream
-		ScheduleIncidentEvent(Seconds(randomIncident->GetValue((int) waitingTime + 1, m_incidentWindow)));
-
-		//UniformVariable randomIncident ((int)waitingTime + 1, m_incidentWindow); //Declaração antiga
-		//ScheduleIncidentEvent (Seconds (randomIncident.GetValue ()));
+		m_status = ClusterControlClient::CLUSTER_UPDATE;
+		ScheduleTransmit(Seconds(m_minimumTdmaSlot * m_maxUes));
 
 		break;
 	}
@@ -831,44 +833,33 @@ void ClusterControlClient::Send(void) {
 	}
 }
 
-void ClusterControlClient::SendClusterInfo(void) {
-	AcquireMobilityInfo();
-	ClusterInfoHeader clusterInfo;
-	clusterInfo.SetSeq(m_sentCounter);
-	clusterInfo.SetMobilityInfo(m_currentMobility);
-
-	Ptr<Packet> packet = Create<Packet>(0);
-	packet->AddHeader(clusterInfo);
-	m_txTrace(packet);
-	m_socket->Send(packet);
-	++m_sentCounter;
-
-}
-
 void ClusterControlClient::UpdateNeighbors(void) {
 	m_status = ClusterControlClient::CLUSTER_UPDATE;
 	ScheduleTransmit(m_interval);
 }
 
 void ClusterControlClient::InitiateCluster(void) {
-	//std::cout << "Initiating from " << m_currentMobility.imsi << " ...";
-	if (m_status == ClusterControlClient::CLUSTER_INITIALIZATION || m_status == ClusterControlClient::CLUSTER_HEAD_ELECTION) {
-		if (HasMaxId()) {
-			// retry
-#ifdef CLUSTER_CONTROL_CLIENT_DEBUG
-			std::cout << " become CH? " << ToString(m_status) << std::endl;
-#endif
-			Simulator::Schedule(Seconds(m_minimumTdmaSlot * m_maxUes), &ClusterControlClient::InitiateCluster, this);
+	if (m_status == ClusterControlClient::CLUSTER_INITIALIZATION ) {
+		if(m_currentMobility.clusterId == ClusterSap::CH || m_currentMobility.clusterId == ClusterSap::CM ){
+			m_status = ClusterControlClient::CLUSTER_UPDATE;
+			ScheduleTransmit(m_interval);
 		}
-
 		else{
+			if (HasMaxId()) {
+				// retry
 #ifdef CLUSTER_CONTROL_CLIENT_DEBUG
-			std::cout << " become CM? Initiating to other Node now ... " << std::endl;
+				std::cout << "Initiating from " << m_currentMobility.imsi << " ...";
+				std::cout << " become CH? " << ToString(m_status) << std::endl;
 #endif
-			m_status = ClusterControlClient::CLUSTER_HEAD_ELECTION;
-			ScheduleTransmit(Seconds(m_minimumTdmaSlot * m_maxUes));
-		}
+				m_status = ClusterControlClient::CLUSTER_HEAD_ELECTION;
+				ScheduleTransmit(Seconds(m_minimumTdmaSlot * m_maxUes));
 
+			}
+
+			else{
+				Simulator::Schedule(Seconds(m_minimumTdmaSlot * m_maxUes), &ClusterControlClient::InitiateCluster, this);
+			}
+		}
 	}
 }
 
@@ -878,7 +869,7 @@ bool ClusterControlClient::HasMaxId(void) {
 	for (std::map<uint64_t, ClusterSap::NeighborInfo>::iterator it =
 			m_2rStableList.begin(); it != m_2rStableList.end(); ++it) {
 		ClusterSap::NeighborInfo value = it->second;
-		if (value.imsi > maxId && value.degree == ClusterSap::STANDALONE) {
+		if (value.imsi > maxId && value.degree != ClusterSap::CM) {
 			maxId = value.imsi;
 		}
 	}
@@ -897,7 +888,7 @@ void ClusterControlClient::ConnectionFailed(Ptr<Socket> socket) {
 }
 
 void ClusterControlClient::UpdateNeighborList(void) {
-
+	AcquireMobilityInfo();
 	ClusterSap::NeighborInfo prev_mobility = m_currentMobility;
 
 	bool hasCH = false;
@@ -914,7 +905,13 @@ void ClusterControlClient::UpdateNeighborList(void) {
 			hasCH = true;
 		}
 
-		if (m_currentMobility.ts.GetSeconds() - value.ts.GetSeconds() > (3 * m_interval)) {
+		// Old CM (Node changed other cluster)
+		if (m_clusterList.find(key) != m_clusterList.end() &&
+				m_currentMobility.imsi != value.clusterId) {
+			m_clusterList.erase(key);
+		}
+
+		if (m_currentMobility.ts.GetSeconds() - value.ts.GetSeconds() > (1.3 * m_interval)) {
 			m_2rStableList.erase(it++);
 			if (value.imsi == m_currentMobility.clusterId) {
 				// Lost CH
@@ -938,11 +935,13 @@ void ClusterControlClient::UpdateNeighborList(void) {
 			if ((m_2rStableList.size() == 0)&& (m_currentMobility.degree != ClusterSap::CH)) {
 				// become CH
 #ifdef CLUSTER_CONTROL_CLIENT_DEBUG
-				std::cout << "id: " << m_currentMobility.imsi << " become CH in UpdateNeighborList()" << std::endl;
+				std::cout << "id: " << m_currentMobility.imsi << " become CH in UpdateNeighborList() " << ToString(m_status) << std::endl;
 #endif
 				m_currentMobility.degree = ClusterSap::CH;
 				m_currentMobility.clusterId = m_currentMobility.imsi;
 				m_changesCounter++;
+
+				ScheduleTransmit(Seconds(.0));
 			}
 		} else {
 			++it;
