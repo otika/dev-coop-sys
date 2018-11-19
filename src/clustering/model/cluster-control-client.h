@@ -263,6 +263,7 @@ private:
     double m_timeWindow;                    //!< Time Window for cluster formation
 	uint32_t m_pktSize;      				//!< Size of packets
     uint32_t m_sentCounter; 				//!< Counter for sent packets
+    uint32_t m_recvCounter;					//!< Counter for receive packets
 
     TracedCallback<Ptr<const Packet> > m_txTrace;
 	TracedCallback<Ptr<const Packet>, const Address &> m_rxTrace;

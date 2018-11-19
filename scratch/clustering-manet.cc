@@ -33,6 +33,7 @@
 #include "ns3/config-store-module.h"
 #include "ns3/point-to-point-module.h"
 #include "ns3/netanim-module.h"
+#include "ns3/flow-monitor-helper.h"
 #include "ns3/random-variable-stream.h"
 #include "ns3/cluster-control-client-helper.h"
 #include "ns3/cluster-sap.h"
@@ -45,7 +46,7 @@
 #define SIMULATION_TIME_FORMAT(s) Seconds(s)
 
 #define STD_NODE_SIZE 0.1
-#define WIFI_POWER -25
+#define WIFI_POWER -24
 
 using namespace ns3;
 NS_LOG_COMPONENT_DEFINE("ClusteringExample");
@@ -79,13 +80,13 @@ int main(int argc, char *argv[]) {
 
     uint16_t numberOfUes = 99;
     int column = 9;
-    double distance = 0.8;
+    double distance = 1.0;
 
     double minimumTdmaSlot = 0.001;         /// Time difference between 2 transmissions
     double clusterTimeMetric = 5.0;         /// Clustering Time Metric for Waiting Time calculation
     double incidentWindow = 30.0;
 
-    double simTime = 5.0;
+    double simTime = 10.0;
     /*----------------------------------------------------------------------*/
 
 
@@ -119,7 +120,7 @@ int main(int argc, char *argv[]) {
 
     AodvHelper aodv;
     InternetStackHelper internet;
-    //internet.SetRoutingHelper(aodv);
+    internet.SetRoutingHelper(aodv);
     internet.Install(nodes);
     /*----------------------------------------------------------------------*/
 
@@ -157,8 +158,8 @@ int main(int argc, char *argv[]) {
     // wifiPhy.Set ("TxPowerEnd", DoubleValue(32));
     wifiPhy.Set ("TxGain", DoubleValue(WIFI_POWER));
     wifiPhy.Set ("RxGain", DoubleValue(WIFI_POWER));
-    // wifiPhy.Set ("EnergyDetectionThreshold", DoubleValue(-61.8));
-    // wifiPhy.Set ("CcaMode1Threshold", DoubleValue(-64.8));
+    // wifiPhy.Set ("EnergyDetectionThreshold", DoubleValue(-90));
+    // wifiPhy.Set ("CcaMode1Threshold", DoubleValue(-94));
 
 
     // using IEEE802.11n
@@ -211,6 +212,36 @@ int main(int argc, char *argv[]) {
     }
 
 
+//    // AODV Testing using PING
+//    Address serverAddress;
+//	serverAddress = Address(i1.GetAddress(9));
+//
+//
+//	//
+//	// Create a UdpEchoServer application on node one.
+//	//
+//	  uint16_t port = 9;  // well-known echo port number
+//	  UdpEchoServerHelper server (port);
+//	  ApplicationContainer apps = server.Install (nodes.Get (9));
+//	  apps.Start (Seconds (5.0));
+//	  apps.Stop (Seconds (10.0));
+//
+//	//
+//	// Create a UdpEchoClient application to send UDP datagrams from node zero to
+//	// node one.
+//	//
+//	  uint32_t packetSize = 1024;
+//	  uint32_t maxPacketCount = 1;
+//	  Time interPacketInterval = Seconds (1.);
+//	  UdpEchoClientHelper client (serverAddress, port);
+//	  client.SetAttribute ("MaxPackets", UintegerValue (maxPacketCount));
+//	  client.SetAttribute ("Interval", TimeValue (interPacketInterval));
+//	  client.SetAttribute ("PacketSize", UintegerValue (packetSize));
+//	  apps = client.Install (nodes.Get (0));
+//	  apps.Start (Seconds (2.0));
+//	  apps.Stop (Seconds (10.0));
+
+
     pAnim = new AnimationInterface("scratch/clustering-manet.xml");
     pAnim->EnablePacketMetadata (); // Optional
      pAnim->EnableIpv4L3ProtocolCounters (Seconds (0), Seconds (10)); // Optional
@@ -227,6 +258,10 @@ int main(int argc, char *argv[]) {
 //     AsciiTraceHelper ascii;
 //     wifiPhy.EnableAsciiAll(ascii.CreateFileStream ("scratch/socket-options-ipv4.txt"));
 //     wifiPhy.EnablePcapAll ("scratch/cluser.socket.pcap", false);
+    // Flow monitor
+    Ptr<FlowMonitor> flowMonitor;
+    FlowMonitorHelper flowHelper;
+    flowMonitor = flowHelper.InstallAll();
 
     /*----------------------------------------------------------------------*/
 
@@ -238,6 +273,8 @@ int main(int argc, char *argv[]) {
     Simulator::Run();
     Simulator::Destroy();
     /*----------------------------------------------------------------------*/
+
+    flowMonitor->SerializeToXmlFile("scratch/flow-mon.xml", true, true);
 
     delete pAnim;
 

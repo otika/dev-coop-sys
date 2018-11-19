@@ -45,6 +45,7 @@
 #include <limits>
 
 // #define CLUSTER_CONTROL_CLIENT_DEBUG
+#define RANGE 2.5
 
 namespace ns3 {
 
@@ -142,6 +143,7 @@ ClusterControlClient::ClusterControlClient() {
 
 	m_overalDelay = 0;
 	m_sentCounter = 0;
+	m_recvCounter = 0;
 	m_changesCounter = 0;
 	m_incidentCounter = 0;
 	m_formationCounter = 0;
@@ -152,6 +154,7 @@ ClusterControlClient::ClusterControlClient() {
 
 ClusterControlClient::~ClusterControlClient() {
 	NS_LOG_FUNCTION(this);
+	std::cout << "[" << m_currentMobility.imsi << "] " << ToString(m_status) << ", sent:" << m_sentCounter << " times, recv:" << m_recvCounter << " times" << std::endl;
 
 	m_socket = 0;
 	m_socketIncident = 0;
@@ -159,9 +162,11 @@ ClusterControlClient::~ClusterControlClient() {
 
 	m_overalDelay = 0;
 	m_sentCounter = 0;
+	m_recvCounter = 0;
 	m_changesCounter = 0;
 	m_incidentCounter = 0;
 	m_formationCounter = 0;
+
 }
 
 void ClusterControlClient::PrintStatistics(std::ostream &os) {
@@ -318,6 +323,7 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 		PacketMetadata::ItemIterator metadataIterator = packet->BeginItem();
 		PacketMetadata::Item item;
 		while (metadataIterator.HasNext()) {
+			++m_recvCounter;
 			item = metadataIterator.Next();
 
 			// ClusterInfoHeader
@@ -330,6 +336,18 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 
 				//!< Update 2rStable and cluster List
 				std::map<uint64_t, ClusterSap::NeighborInfo>::iterator it2r = m_2rStableList.find(otherInfo.imsi);
+
+				// Range check
+				Vector v1 = m_currentMobility.position;
+				Vector v2 = otherInfo.position;
+				double dx = v1.x - v2.x;
+				double dy = v1.y - v2.y;
+				double dz = v1.z - v2.z;
+				double range = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
+
+				if (range >= RANGE){
+					continue;
+				}
 
 				if (it2r == m_2rStableList.end()) {
 					m_2rStableList.insert(std::map<uint64_t, ClusterSap::NeighborInfo>::value_type(otherInfo.imsi, otherInfo));
@@ -422,6 +440,18 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 					packet->RemoveHeader(initiateCluster);
 					ClusterSap::NeighborInfo chInfo = initiateCluster.GetMobilityInfo();
 
+					// Range check
+					Vector v1 = m_currentMobility.position;
+					Vector v2 = chInfo.position;
+					double dx = v1.x - v2.x;
+					double dy = v1.y - v2.y;
+					double dz = v1.z - v2.z;
+					double range = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
+
+					if (range >= RANGE){
+						continue;
+					}
+
 
 #ifdef CLUSTER_CONTROL_CLIENT_DEBUG
 					std::cout << "id: " << m_currentMobility.imsi << " become CH in HandleRead()@InitiateCluster " << m_currentMobility.clusterId << std::endl;
@@ -456,6 +486,19 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 
 				//!< Update 2rStable and cluster List
 				ClusterSap::NeighborInfo otherInfo = formCluster.GetMobilityInfo();
+
+				// Range check
+				Vector v1 = m_currentMobility.position;
+				Vector v2 = otherInfo.position;
+				double dx = v1.x - v2.x;
+				double dy = v1.y - v2.y;
+				double dz = v1.z - v2.z;
+				double range = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
+
+				if (range >= RANGE){
+					continue;
+				}
+
 				std::map<uint64_t, ClusterSap::NeighborInfo>::iterator it2r = m_2rStableList.find(otherInfo.imsi);
 				if (it2r == m_2rStableList.end()) {
 					NS_LOG_DEBUG("[HandleRead] => Node:" << m_currentMobility.imsi << " Insert packet:" << otherInfo.imsi);
@@ -793,9 +836,9 @@ void ClusterControlClient::Send(void) {
 		break;
 	}
 	case ClusterControlClient::CLUSTER_UPDATE: {
-		if (m_currentMobility.degree == ClusterSap::CH) {
-			StatusReport();
-		}
+//		if (m_currentMobility.degree == ClusterSap::CH) {
+//			StatusReport();
+//		}
 #ifdef CLUSTER_CONTROL_CLIENT_DEBUG
 		std::cout << "Send update from " << m_currentMobility.imsi
 				<< "(" << ToString(m_currentMobility.degree) << ")"
@@ -860,6 +903,7 @@ void ClusterControlClient::InitiateCluster(void) {
 				Simulator::Schedule(Seconds(m_minimumTdmaSlot * m_maxUes), &ClusterControlClient::InitiateCluster, this);
 			}
 		}
+		StatusReport();
 	}
 }
 
@@ -911,7 +955,7 @@ void ClusterControlClient::UpdateNeighborList(void) {
 			m_clusterList.erase(key);
 		}
 
-		if (m_currentMobility.ts.GetSeconds() - value.ts.GetSeconds() > (1.3 * m_interval)) {
+		if (m_currentMobility.ts.GetSeconds() - value.ts.GetSeconds() > (double)(2.0 * m_interval.GetSeconds())) {
 			m_2rStableList.erase(it++);
 			if (value.imsi == m_currentMobility.clusterId) {
 				// Lost CH
@@ -920,6 +964,7 @@ void ClusterControlClient::UpdateNeighborList(void) {
 				m_currentMobility.degree = ClusterSap::STANDALONE;
 				NS_LOG_DEBUG(
 						"[UpdateNeighborList] => Go to STANDALONE state: " << m_currentMobility.imsi);
+				m_status = ClusterControlClient::CLUSTER_INITIALIZATION;
 			}
 
 			if (m_2rStableList.find(key) != m_2rStableList.end()) {
@@ -946,6 +991,7 @@ void ClusterControlClient::UpdateNeighborList(void) {
 		} else {
 			++it;
 		}
+
 	}
 
 	if(m_currentMobility.degree == ClusterSap::CM && !hasCH){
