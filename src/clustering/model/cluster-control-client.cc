@@ -154,7 +154,7 @@ ClusterControlClient::ClusterControlClient() {
 
 ClusterControlClient::~ClusterControlClient() {
 	NS_LOG_FUNCTION(this);
-	std::cout << "[" << m_currentMobility.imsi << "] " << ToString(m_status) << ", sent:" << m_sentCounter << " times, recv:" << m_recvCounter << " times" << std::endl;
+	std::cout << "[" << m_currentMobility.imsi << "] " << ToString(m_currentMobility.degree) << ", " << m_currentMobility.clusterId << ", " << ToString(m_status) << ", sent:" << m_sentCounter << " times, recv:" << m_recvCounter << " times" << std::endl;
 
 	m_socket = 0;
 	m_socketIncident = 0;
@@ -304,8 +304,12 @@ Ptr<Socket> ClusterControlClient::GetSocket(void) const {
 }
 
 const ClusterSap::NeighborInfo ClusterControlClient::GetCurrentMobility() const {
-	const ClusterSap::NeighborInfo info = m_currentMobility;
-	return info;
+	ClusterSap::NeighborInfo info = m_currentMobility;
+	info.ts = Simulator::Now();
+	info.imsi = this->GetNode()->GetId();
+	info.position = m_mobilityModel->GetPosition();
+	const ClusterSap::NeighborInfo const_info = info;
+	return const_info;
 }
 
 // Private Members
@@ -348,7 +352,6 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 				if (range >= RANGE){
 					continue;
 				}
-
 				if (it2r == m_2rStableList.end()) {
 					m_2rStableList.insert(std::map<uint64_t, ClusterSap::NeighborInfo>::value_type(otherInfo.imsi, otherInfo));
 				} else {
@@ -691,7 +694,6 @@ uint64_t ClusterControlClient::MergeCheck(void) {
 }
 
 void ClusterControlClient::AcquireMobilityInfo(void) {
-
 	//!< Acquire current mobility stats
 	m_currentMobility.ts = Simulator::Now();
 	m_currentMobility.imsi = this->GetNode()->GetId();
@@ -757,6 +759,11 @@ void ClusterControlClient::ScheduleTransmit(Time dt) {
 }
 
 void ClusterControlClient::Send(void) {
+
+	if(m_currentMobility.imsi == 0){
+		std::cout << (double)Simulator::Now().GetSeconds() << "sec send by 0 " << ToString(m_status) << std::endl;
+ 	}
+
 	NS_LOG_FUNCTION(this);
 	NS_LOG_DEBUG("[Send] => NodeId:" << m_currentMobility.imsi << " EventInfo:" << m_sendEvent.GetTs() << " status: " << ToString(m_status));
 
@@ -803,6 +810,9 @@ void ClusterControlClient::Send(void) {
 		Ptr<Packet> packet = Create<Packet>(0);
 		packet->AddHeader(initiateCluster);
 		m_txTrace(packet);
+		if(PeekPointer(m_socket) <= 0) {
+			std::cout << m_currentMobility.imsi << " socket missing " << std::endl;
+		}
 		m_socket->Send(packet);
 		++m_sentCounter;
 		m_formationCounter++;
@@ -844,6 +854,7 @@ void ClusterControlClient::Send(void) {
 				<< "(" << ToString(m_currentMobility.degree) << ")"
 				<< " at " << Simulator::Now ().GetSeconds () <<"s" << std::endl;
 #endif
+
 		AcquireMobilityInfo();
 		ClusterInfoHeader clusterInfo;
 		clusterInfo.SetSeq(m_sentCounter);
@@ -965,6 +976,7 @@ void ClusterControlClient::UpdateNeighborList(void) {
 				NS_LOG_DEBUG(
 						"[UpdateNeighborList] => Go to STANDALONE state: " << m_currentMobility.imsi);
 				m_status = ClusterControlClient::CLUSTER_INITIALIZATION;
+				std::cout << "[" << m_currentMobility.imsi << "]  Initialization Prosessing " << (double)value.ts.GetSeconds() << std::endl;
 			}
 
 			if (m_2rStableList.find(key) != m_2rStableList.end()) {
@@ -1052,7 +1064,8 @@ void ClusterControlClient::SendIncident(void) {
 					<< packet->GetSize () << " bytes to " << Inet6SocketAddress::ConvertFrom(m_peer).GetIpv6 () << " port " << Inet6SocketAddress::ConvertFrom (m_peer).GetPort ()
 					<< " - Event Type is:" << ToString (incidentHeader.GetIncidentInfo ().incidentType));
 		}
-	} else {
+	}
+	else {
 
 		//!< Send Incident event to Cluster Head firstly
 		m_socketIncident->Send(packet);

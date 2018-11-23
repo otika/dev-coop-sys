@@ -32,17 +32,20 @@
 #include "ns3/applications-module.h"
 #include "ns3/config-store-module.h"
 #include "ns3/point-to-point-module.h"
-#include "ns3/netanim-module.h"
 #include "ns3/flow-monitor-helper.h"
 #include "ns3/random-variable-stream.h"
 #include "ns3/cluster-control-client-helper.h"
 #include "ns3/cluster-sap.h"
 
+ #include "ns3/netanim-module.h"
+
 #include <iostream>
+#include <fstream>
 #include <vector>
 #include <random>
 #include <stdexcept>
 
+#define MAX_PKTS_PER_TRACE_FILE 1000000
 #define SIMULATION_TIME_FORMAT(s) Seconds(s)
 
 #define STD_NODE_SIZE 0.1
@@ -52,6 +55,8 @@ using namespace ns3;
 NS_LOG_COMPONENT_DEFINE("ClusteringExample");
 
 AnimationInterface *pAnim = 0;
+NodeContainer nodes_copy;
+std::ofstream outputfile("/media/sf_WaveVisualizer/render.txt");
 
 struct Rgb {
     uint8_t r, g, b;
@@ -61,6 +66,7 @@ template<class T> void shuffle(T ary[],int size);
 Rgb getColor(int id);
 Rgb getNewColor(uint8_t differential);
 void StatusTraceCallback (Ptr<const ClusterControlClient> app);
+void OutputRender(void);
 
 int main(int argc, char *argv[]) {
 
@@ -78,15 +84,15 @@ int main(int argc, char *argv[]) {
     /*---------------------- Simulation Default Values ---------------------*/
     std::string phyMode ("OfdmRate6MbpsBW10MHz");
 
-    uint16_t numberOfUes = 99;
-    int column = 9;
+    uint16_t numberOfUes = 500;
+    int column = 10;
     double distance = 1.0;
 
     double minimumTdmaSlot = 0.001;         /// Time difference between 2 transmissions
     double clusterTimeMetric = 5.0;         /// Clustering Time Metric for Waiting Time calculation
     double incidentWindow = 30.0;
 
-    double simTime = 10.0;
+    double simTime = 5.0;
     /*----------------------------------------------------------------------*/
 
 
@@ -187,9 +193,12 @@ int main(int argc, char *argv[]) {
     uint16_t controlPort = 3999;
     ApplicationContainer controlApps;
 
+
+
     /**
      * Setting Control Channel
      */
+    PacketMetadata::Enable ();
     for (uint32_t u = 0; u < nodes.GetN(); ++u) {
 
         //!< Initial TDMA UE synchronization Function
@@ -241,27 +250,35 @@ int main(int argc, char *argv[]) {
 //	  apps.Start (Seconds (2.0));
 //	  apps.Stop (Seconds (10.0));
 
-
-    pAnim = new AnimationInterface("scratch/clustering-manet.xml");
-    pAnim->EnablePacketMetadata (); // Optional
-     pAnim->EnableIpv4L3ProtocolCounters (Seconds (0), Seconds (10)); // Optional
+    nodes_copy = nodes;
+    Simulator::Schedule(Seconds(0.1) ,&OutputRender);
 
 
-   for (uint32_t u = 0; u < nodes.GetN(); ++u) {
-     pAnim->UpdateNodeSize(u, STD_NODE_SIZE, STD_NODE_SIZE);
-     pAnim->UpdateNodeColor(u, 255,255,255);
-   }
+//    pAnim = new AnimationInterface("scratch/clustering-manet.xml");
+//    pAnim->SetMaxPktsPerTraceFile(MAX_PKTS_PER_TRACE_FILE);
+//    pAnim->SetMobilityPollInterval (Seconds(10));
+//    pAnim->EnablePacketMetadata (); // Optional
+//    pAnim->EnableIpv4L3ProtocolCounters (Seconds (0), Seconds (10)); // Optional
+//    pAnim->SkipPacketTracing();
+//    pAnim->SetStartTime (Seconds(0));
+//    pAnim->SetStopTime (Seconds(0.001));
+//
+//
+//   for (uint32_t u = 0; u < nodes.GetN(); ++u) {
+//     pAnim->UpdateNodeSize(u, STD_NODE_SIZE, STD_NODE_SIZE);
+//     pAnim->UpdateNodeColor(u, 255,255,255);
+//   }
 
     controlApps.Start (Seconds(0.1));
     controlApps.Stop (Seconds(simTime-0.1));
-//
+
 //     AsciiTraceHelper ascii;
 //     wifiPhy.EnableAsciiAll(ascii.CreateFileStream ("scratch/socket-options-ipv4.txt"));
 //     wifiPhy.EnablePcapAll ("scratch/cluser.socket.pcap", false);
     // Flow monitor
-    Ptr<FlowMonitor> flowMonitor;
-    FlowMonitorHelper flowHelper;
-    flowMonitor = flowHelper.InstallAll();
+//    Ptr<FlowMonitor> flowMonitor;
+//    FlowMonitorHelper flowHelper;
+//    flowMonitor = flowHelper.InstallAll();
 
     /*----------------------------------------------------------------------*/
 
@@ -271,12 +288,14 @@ int main(int argc, char *argv[]) {
 
     /*--------------------------- Simulation Run ---------------------------*/
     Simulator::Run();
+    outputfile.close();
+    std::cout << "IsFinished " << Simulator::IsFinished() << std::endl;
     Simulator::Destroy();
     /*----------------------------------------------------------------------*/
 
-    flowMonitor->SerializeToXmlFile("scratch/flow-mon.xml", true, true);
+//    flowMonitor->SerializeToXmlFile("scratch/flow-mon.xml", true, true);
 
-    delete pAnim;
+//    delete pAnim;
 
     return EXIT_SUCCESS;
 }
@@ -286,39 +305,39 @@ void StatusTraceCallback (Ptr<const ClusterControlClient> app)
 {
   Rgb rgb;
   NS_LOG_DEBUG("StatusChanged");
-  if(pAnim != NULL){
-    ClusterSap::NeighborInfo info = app->GetCurrentMobility();
-    int id = info.imsi;
-    int clusterId = info.clusterId;
-    ClusterSap::NodeDegree degree = info.degree;
-
-    // Set color
-    if(degree == ClusterSap::STANDALONE){
-          rgb = {255, 255, 255};
-    }
-    if(degree == ClusterSap::CM || degree == ClusterSap::CH)
-    {
-      rgb = getColor(clusterId);
-    }
-
-    pAnim->UpdateNodeColor(id, rgb.r, rgb.g, rgb.b);
-
-    // Set size
-    if(degree == ClusterSap::CH)
-    {
-      pAnim->UpdateNodeSize(id, STD_NODE_SIZE * 4, STD_NODE_SIZE * 4); // CH
-    }
-    else
-    {
-      pAnim->UpdateNodeSize(id, STD_NODE_SIZE * 2, STD_NODE_SIZE * 2); // CM
-    }
-  }
+//  if(pAnim != NULL){
+//    ClusterSap::NeighborInfo info = app->GetCurrentMobility();
+//    int id = info.imsi;
+//    int clusterId = info.clusterId;
+//    ClusterSap::NodeDegree degree = info.degree;
+//
+//    // Set color
+//    if(degree == ClusterSap::STANDALONE){
+//          rgb = {255, 255, 255};
+//    }
+//    if(degree == ClusterSap::CM || degree == ClusterSap::CH)
+//    {
+//      rgb = getColor(clusterId);
+//    }
+//
+//    pAnim->UpdateNodeColor(id, rgb.r, rgb.g, rgb.b);
+//
+//    // Set size
+//    if(degree == ClusterSap::CH)
+//    {
+//      pAnim->UpdateNodeSize(id, STD_NODE_SIZE * 4, STD_NODE_SIZE * 4); // CH
+//    }
+//    else
+//    {
+//      pAnim->UpdateNodeSize(id, STD_NODE_SIZE * 2, STD_NODE_SIZE * 2); // CM
+//    }
+//  }
   return;
 }
 
 Rgb getColor(int id)
 {
-  static std::vector<Rgb> rgb(100, (Rgb){255, 255, 255}); // History
+  static std::vector<Rgb> rgb(2000, (Rgb){255, 255, 255}); // History
   Rgb _rgb = {255, 255, 255}; // workmemory
 
   // Load rgb from output history
@@ -331,6 +350,8 @@ Rgb getColor(int id)
   // Generate New Color
   if(_rgb.r == 255 && _rgb.g == 255 && _rgb.b == 255){
     bool duplicated = false;
+    bool too_many_loop = false;
+    unsigned long long loop_count = 0;
     do{
       duplicated = false;
       _rgb = getNewColor(3);
@@ -341,6 +362,10 @@ Rgb getColor(int id)
           duplicated = true;
           break;
         }
+      }
+      loop_count++;
+      if(loop_count > 1000){
+    	  std::cout << "[TOO MANY LOOP] " << loop_count << " times" << std::endl;
       }
     }while(duplicated);
     rgb[id] = _rgb;
@@ -380,4 +405,28 @@ template<class T> void shuffle(T ary[],int size)
         ary[i] = ary[j];
         ary[j] = t;
     }
+}
+
+void OutputRender(void){
+	std::cout << "rendered by " << (double)Simulator::Now().GetSeconds() << std::endl;
+	outputfile << (double)Simulator::Now().GetSeconds() << " ";
+	for(uint32_t i = 0; i < nodes_copy.GetN(); i++){
+		Ptr<Application> super_app = nodes_copy.Get(i)->GetApplication(0);
+		Ptr<ClusterControlClient> app = Ptr<ClusterControlClient> ( dynamic_cast<ClusterControlClient *> (PeekPointer(super_app)) );
+		ClusterSap::NeighborInfo info = app->GetCurrentMobility();
+		Rgb rgb = getColor(info.clusterId);
+
+		outputfile << info.imsi 	<< " "		// id
+				<< info.clusterId	<< " "		// clusterId
+				<< info.degree 		<< " "		// degree
+				<< info.position.x	<< " "		// pos.x
+				<< info.position.y	<< " " 		// pos.y
+				<< info.position.z	<< " "		// pos.z
+				<< 0				<< " "		// state (ready, active, finish)
+				<< (int)rgb.r			<< " "
+				<< (int)rgb.g			<< " "
+				<< (int)rgb.b			<< " ";
+	}
+	outputfile << std::endl;
+	Simulator::Schedule(Seconds(0.1) ,&OutputRender);
 }

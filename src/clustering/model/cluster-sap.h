@@ -41,13 +41,13 @@ public:
     };
 
     struct NeighborInfo{
-        Time ts;
-        uint64_t imsi;
-        uint64_t clusterId;
+        Time ts = Seconds(0.0);
+        uint64_t imsi = 0;
+        uint64_t clusterId = 0;
 
-        Vector position;
+        Vector position = Vector(0, 0, 0);
 
-        NodeDegree degree;
+        NodeDegree degree = STANDALONE;
     };
 
     enum IncidentType{
