@@ -45,11 +45,10 @@
 #include <random>
 #include <stdexcept>
 
-#define MAX_PKTS_PER_TRACE_FILE 1000000
 #define SIMULATION_TIME_FORMAT(s) Seconds(s)
 
 #define STD_NODE_SIZE 0.1
-#define WIFI_POWER -24
+#define WIFI_POWER -25 // -24
 
 using namespace ns3;
 NS_LOG_COMPONENT_DEFINE("ClusteringExample");
@@ -84,7 +83,7 @@ int main(int argc, char *argv[]) {
     /*---------------------- Simulation Default Values ---------------------*/
     std::string phyMode ("OfdmRate6MbpsBW10MHz");
 
-    uint16_t numberOfUes = 500;
+    uint16_t numberOfUes = 100;
     int column = 10;
     double distance = 1.0;
 
@@ -92,9 +91,7 @@ int main(int argc, char *argv[]) {
     double clusterTimeMetric = 5.0;         /// Clustering Time Metric for Waiting Time calculation
     double incidentWindow = 30.0;
 
-    double simTime = 5.0;
-    /*----------------------------------------------------------------------*/
-
+    double simTime = 10.0;
 
     /*-------------------- Set explicitly default values -------------------*/
     Config::SetDefault ("ns3::WifiRemoteStationManager::FragmentationThreshold",
@@ -105,8 +102,6 @@ int main(int argc, char *argv[]) {
     // Fix non-unicast data rate to be the same as that of unicast
     Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode",
                             StringValue (phyMode));
-    /*----------------------------------------------------------------------*/
-
 
     /*-------------------- Command Line Argument Values --------------------*/
     CommandLine cmd;
@@ -117,8 +112,6 @@ int main(int argc, char *argv[]) {
     NS_LOG_INFO("");
     NS_LOG_INFO("|---"<< " SimTime -> " << simTime <<" ---|\n");
     NS_LOG_INFO("|---"<< " Number of UE -> " << numberOfUes <<" ---|\n");
-    /*----------------------------------------------------------------------*/
-
 
     /*------------------------- Create UEs-EnodeBs -------------------------*/
     NodeContainer nodes;
@@ -128,8 +121,6 @@ int main(int argc, char *argv[]) {
     InternetStackHelper internet;
     internet.SetRoutingHelper(aodv);
     internet.Install(nodes);
-    /*----------------------------------------------------------------------*/
-
 
     /*-------------------- Install Mobility Model in Ue --------------------*/
     MobilityHelper ueMobility;
@@ -149,8 +140,6 @@ int main(int argc, char *argv[]) {
     {
         nodes.Get(list[i])->GetObject<MobilityModel> ()->SetPosition (Vector ( (i-i%column)/column*distance, i%column*distance, 0));
     }
-    /*----------------------------------------------------------------------*/
-
 
     /*-------------------------- Setup Wifi nodes --------------------------*/
     // The below set of helpers will help us to put together the wifi NICs we want
@@ -159,19 +148,14 @@ int main(int argc, char *argv[]) {
 
     YansWifiPhyHelper wifiPhy =  YansWifiPhyHelper::Default ();
     wifiPhy.SetChannel (channel);
-    // wifiPhy.SetPcapDataLinkType (YansWifiPhyHelper::DLT_IEEE802_11);
-    // wifiPhy.Set ("TxPowerStart", DoubleValue(32));
-    // wifiPhy.Set ("TxPowerEnd", DoubleValue(32));
+    wifiPhy.SetPcapDataLinkType (YansWifiPhyHelper::DLT_IEEE802_11);
+//    wifiPhy.Set ("TxPowerLevels", UintegerValue(16));
+//    wifiPhy.Set ("TxPowerStart", DoubleValue(0.0));
+//    wifiPhy.Set ("TxPowerEnd", DoubleValue(32));
     wifiPhy.Set ("TxGain", DoubleValue(WIFI_POWER));
     wifiPhy.Set ("RxGain", DoubleValue(WIFI_POWER));
     // wifiPhy.Set ("EnergyDetectionThreshold", DoubleValue(-90));
     // wifiPhy.Set ("CcaMode1Threshold", DoubleValue(-94));
-
-
-    // using IEEE802.11n
-    // WifiMacHelper wifiMac;
-    // wifiMac.SetType ("ns3::AdhocWifiMac");
-    // WifiHelper wifi;
 
     // using IEEE802.11p
     NqosWaveMacHelper wifiMac = NqosWaveMacHelper::Default ();
@@ -193,14 +177,11 @@ int main(int argc, char *argv[]) {
     uint16_t controlPort = 3999;
     ApplicationContainer controlApps;
 
-
-
     /**
      * Setting Control Channel
      */
     PacketMetadata::Enable ();
     for (uint32_t u = 0; u < nodes.GetN(); ++u) {
-
         //!< Initial TDMA UE synchronization Function
 		// double tdmaStart = (u+1)*minimumTdmaSlot;
         double tdmaStart = (nodes.GetN() - u)*minimumTdmaSlot;
@@ -208,68 +189,40 @@ int main(int argc, char *argv[]) {
         Ptr<ConstantPositionMobilityModel> mobilityModel = nodes.Get(u)->GetObject<ConstantPositionMobilityModel>();
 
         // クラスタリング機能
-        ClusterControlClientHelper ueClient("ns3::UdpSocketFactory",
+        ClusterControlClientHelper ueClient(
+        		"ns3::UdpSocketFactory",
         		Address(InetSocketAddress(Ipv4Address::GetBroadcast(), controlPort)),
-                "ns3::UdpSocketFactory", InetSocketAddress(Ipv4Address::GetAny(), controlPort),
+                "ns3::UdpSocketFactory",
+				InetSocketAddress(Ipv4Address::GetAny(), controlPort),
                 mobilityModel, tdmaStart, numberOfUes, minimumTdmaSlot, clusterTimeMetric);
 
         ueClient.SetAttribute ("IncidentWindow", DoubleValue(incidentWindow));
         controlApps.Add(ueClient.Install(nodes.Get(u)));
 
-        Ptr<Application> app = nodes.Get(u)->GetApplication(0);
-        app->TraceConnectWithoutContext("Status", MakeCallback(&StatusTraceCallback));
+        Ptr<Application> super_app = nodes.Get(u)->GetApplication(0);
+        super_app->TraceConnectWithoutContext("Status", MakeCallback(&StatusTraceCallback));
+
+        Ptr<ClusterControlClient> app = Ptr<ClusterControlClient> ( dynamic_cast<ClusterControlClient *> (PeekPointer(super_app)) );
+        app->SetClusteringStartTime(Seconds(0.1 + tdmaStart));
+        app->SetClusteringStopTime(Seconds(3.0 + tdmaStart));
+
+        if(u == 0){
+        	app->SetStartingNode(true);
+        	app->SetBasePropagationVector(Vector(1.0, 0.0, 0.0));
+        }
     }
 
-
-//    // AODV Testing using PING
-//    Address serverAddress;
-//	serverAddress = Address(i1.GetAddress(9));
-//
-//
-//	//
-//	// Create a UdpEchoServer application on node one.
-//	//
-//	  uint16_t port = 9;  // well-known echo port number
-//	  UdpEchoServerHelper server (port);
-//	  ApplicationContainer apps = server.Install (nodes.Get (9));
-//	  apps.Start (Seconds (5.0));
-//	  apps.Stop (Seconds (10.0));
-//
-//	//
-//	// Create a UdpEchoClient application to send UDP datagrams from node zero to
-//	// node one.
-//	//
-//	  uint32_t packetSize = 1024;
-//	  uint32_t maxPacketCount = 1;
-//	  Time interPacketInterval = Seconds (1.);
-//	  UdpEchoClientHelper client (serverAddress, port);
-//	  client.SetAttribute ("MaxPackets", UintegerValue (maxPacketCount));
-//	  client.SetAttribute ("Interval", TimeValue (interPacketInterval));
-//	  client.SetAttribute ("PacketSize", UintegerValue (packetSize));
-//	  apps = client.Install (nodes.Get (0));
-//	  apps.Start (Seconds (2.0));
-//	  apps.Stop (Seconds (10.0));
-
     nodes_copy = nodes;
-    Simulator::Schedule(Seconds(0.1) ,&OutputRender);
-
+    Simulator::Schedule(Seconds(0.05) ,&OutputRender);
 
 //    pAnim = new AnimationInterface("scratch/clustering-manet.xml");
-//    pAnim->SetMaxPktsPerTraceFile(MAX_PKTS_PER_TRACE_FILE);
-//    pAnim->SetMobilityPollInterval (Seconds(10));
-//    pAnim->EnablePacketMetadata (); // Optional
-//    pAnim->EnableIpv4L3ProtocolCounters (Seconds (0), Seconds (10)); // Optional
-//    pAnim->SkipPacketTracing();
-//    pAnim->SetStartTime (Seconds(0));
-//    pAnim->SetStopTime (Seconds(0.001));
 //
-//
-//   for (uint32_t u = 0; u < nodes.GetN(); ++u) {
-//     pAnim->UpdateNodeSize(u, STD_NODE_SIZE, STD_NODE_SIZE);
-//     pAnim->UpdateNodeColor(u, 255,255,255);
-//   }
+//	for (uint32_t u = 0; u < nodes.GetN(); ++u) {
+//		pAnim->UpdateNodeSize(u, STD_NODE_SIZE, STD_NODE_SIZE);
+//		pAnim->UpdateNodeColor(u, 255,255,255);
+//	}
 
-    controlApps.Start (Seconds(0.1));
+    controlApps.Start (Seconds(0.0));
     controlApps.Stop (Seconds(simTime-0.1));
 
 //     AsciiTraceHelper ascii;
@@ -305,33 +258,33 @@ void StatusTraceCallback (Ptr<const ClusterControlClient> app)
 {
   Rgb rgb;
   NS_LOG_DEBUG("StatusChanged");
-//  if(pAnim != NULL){
-//    ClusterSap::NeighborInfo info = app->GetCurrentMobility();
-//    int id = info.imsi;
-//    int clusterId = info.clusterId;
-//    ClusterSap::NodeDegree degree = info.degree;
-//
-//    // Set color
-//    if(degree == ClusterSap::STANDALONE){
-//          rgb = {255, 255, 255};
-//    }
-//    if(degree == ClusterSap::CM || degree == ClusterSap::CH)
-//    {
-//      rgb = getColor(clusterId);
-//    }
-//
-//    pAnim->UpdateNodeColor(id, rgb.r, rgb.g, rgb.b);
-//
-//    // Set size
-//    if(degree == ClusterSap::CH)
-//    {
-//      pAnim->UpdateNodeSize(id, STD_NODE_SIZE * 4, STD_NODE_SIZE * 4); // CH
-//    }
-//    else
-//    {
-//      pAnim->UpdateNodeSize(id, STD_NODE_SIZE * 2, STD_NODE_SIZE * 2); // CM
-//    }
-//  }
+  if(pAnim != NULL){
+    ClusterSap::NeighborInfo info = app->GetCurrentMobility();
+    int id = info.imsi;
+    int clusterId = info.clusterId;
+    ClusterSap::NodeDegree degree = info.degree;
+
+    // Set color
+    if(degree == ClusterSap::STANDALONE){
+          rgb = {255, 255, 255};
+    }
+    if(degree == ClusterSap::CM || degree == ClusterSap::CH)
+    {
+      rgb = getColor(clusterId);
+    }
+
+    pAnim->UpdateNodeColor(id, rgb.r, rgb.g, rgb.b);
+
+    // Set size
+    if(degree == ClusterSap::CH)
+    {
+      pAnim->UpdateNodeSize(id, STD_NODE_SIZE * 4, STD_NODE_SIZE * 4); // CH
+    }
+    else
+    {
+      pAnim->UpdateNodeSize(id, STD_NODE_SIZE * 2, STD_NODE_SIZE * 2); // CM
+    }
+  }
   return;
 }
 
@@ -350,7 +303,6 @@ Rgb getColor(int id)
   // Generate New Color
   if(_rgb.r == 255 && _rgb.g == 255 && _rgb.b == 255){
     bool duplicated = false;
-    bool too_many_loop = false;
     unsigned long long loop_count = 0;
     do{
       duplicated = false;
@@ -409,12 +361,21 @@ template<class T> void shuffle(T ary[],int size)
 
 void OutputRender(void){
 	std::cout << "rendered by " << (double)Simulator::Now().GetSeconds() << std::endl;
+
 	outputfile << (double)Simulator::Now().GetSeconds() << " ";
 	for(uint32_t i = 0; i < nodes_copy.GetN(); i++){
 		Ptr<Application> super_app = nodes_copy.Get(i)->GetApplication(0);
 		Ptr<ClusterControlClient> app = Ptr<ClusterControlClient> ( dynamic_cast<ClusterControlClient *> (PeekPointer(super_app)) );
 		ClusterSap::NeighborInfo info = app->GetCurrentMobility();
-		Rgb rgb = getColor(info.clusterId);
+		Rgb rgb;
+		// Set color
+		if(info.degree == ClusterSap::STANDALONE){
+			  rgb = {255, 255, 255};
+		}
+		if(info.degree == ClusterSap::CM || info.degree == ClusterSap::CH)
+		{
+		  rgb = getColor(info.clusterId);
+		}
 
 		outputfile << info.imsi 	<< " "		// id
 				<< info.clusterId	<< " "		// clusterId
@@ -428,5 +389,5 @@ void OutputRender(void){
 				<< (int)rgb.b			<< " ";
 	}
 	outputfile << std::endl;
-	Simulator::Schedule(Seconds(0.1) ,&OutputRender);
+	Simulator::Schedule(Seconds(0.05) ,&OutputRender);
 }

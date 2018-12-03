@@ -29,9 +29,9 @@
 namespace ns3 {
 
 /**
- * \ingroup v2v
+ * \ingroup clustering
  * \class ClusterInfoHeader
- * \brief Packet header for V2vControlClient application.
+ * \brief Packet header for ClusterControlClient application.
  *
  * The header is made of a 64bits sequence number followed by
  * a mobility information structure.
@@ -74,13 +74,13 @@ public:
 
 private:
 
-    uint64_t m_seq;                                 //!< Sequence number
+    uint64_t m_seq;                              //!< Sequence number
     ClusterSap::NeighborInfo m_mobilityInfo;     //!< Mobile Info
 };
 
 
 /**
- * \ingroup cluster
+ * \ingroup clustering
  * \class InitiateClusterHeader
  * \brief Packet header for ControlClient application.
  *
@@ -148,9 +148,9 @@ private:
 
 
 /**
- * \ingroup v2v
+ * \ingroup clustering
  * \class FormClusterHeader
- * \brief Packet header for V2vControlClient application.
+ * \brief Packet header for ClusterControlClient application.
  *
  * The header is made of a 64bits sequence number followed by
  * a mobility information structure.
@@ -199,7 +199,7 @@ private:
 
 
 /**
- * \ingroup v2v
+ * \ingroup clustering
  * \class IncidentEventHeader
  * \brief Packet header for incident event
  *
@@ -244,6 +244,66 @@ private:
     ClusterSap::IncidentInfo m_incidentInfo;         //!< Incident Information
 };
 
+/**
+ * \ingroup clustering
+ * \class NeighborClusterInfoHeader
+ * \brief Packet header for ClusterControlClient application.
+ *
+ * The header is made of a 64bits sequence number followed by
+ * a mobility information structure.
+ */
+class NeighborClusterInfoHeader: public Header {
+public:
+
+    NeighborClusterInfoHeader();
+    virtual ~NeighborClusterInfoHeader();
+
+    /**
+     * \param seq the sequence number
+     */
+    void SetSeq(uint64_t seq);
+
+    /**
+     * \return the sequence number
+     */
+    uint64_t GetSeq(void) const;
+
+    /**
+	 * \param degree the degree of the node
+	 */
+	void SetClusterId(uint64_t clusterId);
+	/**
+	 * \return the degree of the node
+	 */
+	uint64_t GetClusterId(void) const;
+
+    /**
+     * \param nodeId the id of the node
+     */
+    void SetMobilityInfo(ClusterSap::NeighborInfo mobilityInfo);
+    /**
+     * \return the id of the node
+     */
+    ClusterSap::NeighborInfo GetMobilityInfo(void) const;
+
+    /**
+     * \brief Get the type ID.
+     * \return the object TypeId
+     */
+    static TypeId GetTypeId(void);
+    virtual TypeId GetInstanceTypeId(void) const;
+    virtual void Print(std::ostream &os) const;
+    virtual uint32_t GetSerializedSize(void) const;
+    virtual void Serialize(Buffer::Iterator start) const;
+    virtual uint32_t Deserialize(Buffer::Iterator start);
+
+private:
+
+    uint64_t m_seq;                              //!< Sequence number
+    uint64_t m_clusterId;      					 //!< Cluster id
+    ClusterSap::NeighborInfo m_mobilityInfo;     //!< Mobile Info
+};
+
 } // namespace ns3
 
-#endif // V2V_CLUSTER_HEADER_H
+#endif // CLUSTER_HEADER_H

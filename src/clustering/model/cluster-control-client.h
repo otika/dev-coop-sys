@@ -40,12 +40,24 @@ class Address;
 
 class ClusterControlClient: public Application {
 public:
+	struct Constants
+	{
+		// Constant
+		constexpr static const double RANGE = 2.5;	// Communication Range inner Cluster
+		constexpr static const int DISTRO_MAP_SIZE = 5; // must be bigger than RANGE
+		constexpr static const int DISTRO_MAP_SCALE = 1.0;
+	};
 
 	enum NodeStatus{
         CLUSTER_INITIALIZATION = 0,
         CLUSTER_HEAD_ELECTION,
         CLUSTER_FORMATION,
         CLUSTER_UPDATE,
+		EXCHANGE_DISTRO_MAP,
+		DECIDE_PROPAGATION_PARAM,
+		PROPAGATION_READY,
+		PROPAGATION_RUNNING,
+		PROPAGATION_COMPLETE,
         CLUSTER_STATES
 	};
 
@@ -69,21 +81,72 @@ public:
 	 */
     Ptr<Socket> GetSocket (void) const;
 
-		/**
-		 * \return Information about node and cluster
-		 */
-		const ClusterSap::NeighborInfo GetCurrentMobility() const;
+   /**
+   * \brief Specify application start time
+   * \param start Start time for this application,
+   *        relative to the current simulation time.
+   *
+   * Applications start at various times in the simulation scenario.
+   * The Start method specifies when the application should be
+   * started.  The application subclasses should override the
+   * private "StartApplication" method defined below, which is called at the
+   * time specified, to cause the application to begin.
+   */
+    void SetClusteringStartTime(Time start);
+
+   /**
+   * \brief Specify application stop time
+   * \param stop Stop time for this application, relative to the
+   *        current simulation time.
+   *
+   * Once an application has started, it is sometimes useful
+   * to stop the application.  The Stop method specifies when an
+   * application is to stop.  The application subclasses should override
+   * the private StopApplication method, to be notified when that
+   * time has come.
+   */
+    void SetClusteringStopTime(Time stop);
+
+	/**
+	 * \return Information about node and cluster
+	 */
+	const ClusterSap::NeighborInfo GetCurrentMobility() const;
+
+	/**
+	 * \brief Specify starting node
+	 */
+	void SetStartingNode(bool isStartingNode = true);
+
+	/**
+	 * \brief Specify propagation direction and velocity
+	 */
+	void SetBasePropagationVector(Vector vector);
 
 protected:
     virtual void DoDispose (void);
 
 private:
-	/// inherited from Application base class.
+   	/// inherited from Application base class.
     virtual void StartApplication (void);    // Called at time specified by Start
     virtual void StopApplication (void);     // Called at time specified by Stop
+    void StartClustering (void);    // Called at time specified by Start
+    void StopClustering (void);     // Called at time specified by Stop
+
+    void ExchangeDistroMap (void);    // Called at time specified by Start of ExchangeDistroMap
+    void DecidePropagationParam(void);
+    void CalcPropagationDirection(uint64_t id, Vector propVector);
+    uint64_t FindNodeByPosition(Vector pos);
+    Time CalcPropagationDelay(Vector source, Vector destination, Vector direction);
+
+    void SendTo(uint64_t id, Ptr<Packet> packet, bool *ack = 0);
+
+    virtual void DoInitialize (void);
 
     void StartListeningLocal (void);	// Called from StartApplication()
     void StopListeningLocal (void);	// Called from StopApplication()
+
+    void ConnectSocketInterCH(void);
+    void DisconnectSocketInterCH(void);
 
     /**
      * \brief Print sent/received packets statistics.
@@ -97,6 +160,14 @@ private:
 	 * \param socket the receiving socket
 	 */
     void HandleRead (Ptr<Socket> socket);
+
+    //!< Receive locally
+	/**
+	 * \brief Handle a packet received by the application
+	 * \param socket the receiving socket
+	 */
+    void HandleReadInterCluster (Ptr<Socket> socket);
+
 	/**
 	 * \brief Handle an incoming connection
 	 * \param socket the incoming connection socket
@@ -139,7 +210,9 @@ private:
 	 */
     void ConnectionFailed (Ptr<Socket> socket);
 
+    void ConnectionClosed(Ptr<Socket> socket);
 
+    void ConnectionClosedWithError(Ptr<Socket> socket);
 
     //!< Cluster Functionality
     /**
@@ -157,12 +230,6 @@ private:
 	 * \brief Start the clusterHead election procedure
 	 */
     void InitiateCluster (void);
-
-	/**
-	 * \brief Check if a node is suitable for CH election
-	 * \return integer that represents current suitability value
-	 */
-    double SuitabilityCheck (void);
 
 	/**
 	 * \brief Start the clusterHead election procedure
@@ -200,6 +267,10 @@ private:
     void AcquireMobilityInfo (void);
 
 
+    /**
+     * @brief Update distribution map of node in the cluster
+     */
+    void UpdateDistroMap(void);
 
     //!< Incident
     /**
@@ -253,6 +324,8 @@ private:
 	Address m_peerListening;       	 		//!< Local address to bind to
 	Ptr<Socket> m_socketListening;      	//!< Listening socket
 
+	Ptr<Socket> m_socketListeningInterCH;
+
 	/* Send Socket */
 	TypeId m_tid;          					//!< Type of the socket used
 	Address m_peer;        	 				//!< Peer address
@@ -268,6 +341,15 @@ private:
     TracedCallback<Ptr<const Packet> > m_txTrace;
 	TracedCallback<Ptr<const Packet>, const Address &> m_rxTrace;
 
+	Time m_clusteringStartTime;         //!< The simulation time that clustering of the application will start
+    Time m_clusteringStopTime;          //!< The simulation time that clustering of the application will end
+    EventId m_clusteringStartEvent;     //!< The event that will fire at m_startTime to start clustering of the application
+    EventId m_clusteringStopEvent;      //!< The event that will fire at m_stopTime to end clustering of the application
+    EventId m_exchangeDistroMapEvent;
+
+    EventId m_neighborsListUpdateEvent;
+
+
     uint32_t m_maxUes;                      //!< maximun number of ues
     double m_minimumTdmaSlot;               //!< the minimum tdma slot
     double m_clusterTimeMetric;             //!< the timeslot for the node to schedule transmission
@@ -277,14 +359,31 @@ private:
     ClusterSap::NeighborInfo m_currentMobility;
     Ptr<MobilityModel> m_mobilityModel;
     enum NodeStatus m_status;                           //!< Node Degree
-    std::map<uint64_t, ClusterSap::NeighborInfo> m_clusterList;     //!< Cluster List
-    //std::map<uint64_t, ClusterSap::NeighborInfo> m_rStableList;     //!< rStable Neighbors
-    std::map<uint64_t, ClusterSap::NeighborInfo> m_2rStableList;    //!< 2rStable Neighbors
+
+    std::map<uint64_t, ClusterSap::NeighborInfo> m_clusterList;     //!< Cluster Member's List
+    std::map<uint64_t, ClusterSap::NeighborInfo> m_neighborList;    //!< Neighbor's List
+    std::map<uint64_t, ClusterSap::NeighborInfo> m_neighborClusterList; //!< Neighbor Cluster's List
+
+    std::map<uint64_t, Ptr<Socket>> m_neighborClustersSocket; //!< Socket List of connected to Neighbor Cluster's CH
+
+    float m_distroMap[Constants::DISTRO_MAP_SIZE * Constants::DISTRO_MAP_SIZE];
+    std::map<uint64_t, std::vector<float>> m_neighborDistroMap;
+    std::map<uint64_t, bool> m_ackDistroMap;
+
+    Vector m_basePropagationVector = Vector(0, 0, 0);
+    Vector m_propagationVector = Vector(0, 0, 0);
+    Time m_firstPropagationStartingTime = Time::Max();
+    Time m_propagationStartingTime = Time::Max();
+
+   	std::vector<EventId> m_sendingInterClusterPropagationEvent;
+	Vector m_receiveDirectionSum = Vector(0, 0, 0);
+	int m_receiveDirectionNum = 0;
+	std::map<uint64_t, bool> m_ackInterClusterPropagation;
 
     //!< Incident Info
     ClusterSap::IncidentInfo m_incidentInfo;
 
-		TracedCallback<Ptr<const ClusterControlClient> > m_statusTrace;
+	TracedCallback<Ptr<const ClusterControlClient> > m_statusTrace;
 };
 
 } // namespace ns3

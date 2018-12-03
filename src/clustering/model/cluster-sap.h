@@ -23,8 +23,10 @@
 #define CLUSTER_SAP_H
 
 #include <list>
+#include "ns3/type-id.h"
 #include "ns3/nstime.h"
 #include "ns3/vector.h"
+#include "ns3/ipv4-interface-address.h"
 
 namespace ns3 {
 
@@ -43,11 +45,19 @@ public:
     struct NeighborInfo{
         Time ts = Seconds(0.0);
         uint64_t imsi = 0;
+        Ipv4InterfaceAddress address;
         uint64_t clusterId = 0;
-
+        Ipv4InterfaceAddress chAddress;
+        bool isStartingNode = false;
         Vector position = Vector(0, 0, 0);
-
         NodeDegree degree = STANDALONE;
+    };
+
+    struct InterClusterPropagationInfo{
+    	Time startingTime = Time::Max();
+    	Vector direction = Vector(0, 0, 0);
+    	Vector source = Vector(0, 0, 0);
+    	Vector distination = Vector(0, 0, 0);
     };
 
     enum IncidentType{
@@ -67,4 +77,4 @@ private:
 
 } // namespace ns3
 
-#endif // V2V_CLUSTER_SAP_H
+#endif // CLUSTER_SAP_H

@@ -404,4 +404,112 @@ IncidentEventHeader::Deserialize(Buffer::Iterator start) {
     return GetSerializedSize();
 }
 
+///////////////////////////////////////////////
+
+NS_OBJECT_ENSURE_REGISTERED(NeighborClusterInfoHeader);
+
+NeighborClusterInfoHeader::NeighborClusterInfoHeader() :
+   m_seq(0){
+   NS_LOG_FUNCTION (this);
+}
+
+NeighborClusterInfoHeader::~NeighborClusterInfoHeader(){
+   NS_LOG_FUNCTION (this);
+}
+
+void
+NeighborClusterInfoHeader::SetSeq(uint64_t seq) {
+   NS_LOG_FUNCTION (this << seq);
+   m_seq = seq;
+}
+
+uint64_t
+NeighborClusterInfoHeader::GetSeq(void) const {
+   NS_LOG_FUNCTION (this);
+   return m_seq;
+}
+
+void
+NeighborClusterInfoHeader::SetClusterId(uint64_t clusterId){
+    NS_LOG_FUNCTION (this << clusterId);
+    m_clusterId = clusterId;
+}
+
+uint64_t
+NeighborClusterInfoHeader::GetClusterId(void) const {
+    NS_LOG_FUNCTION (this);
+    return m_clusterId;
+}
+
+void
+NeighborClusterInfoHeader::SetMobilityInfo(ClusterSap::NeighborInfo mobilityInfo){
+   NS_LOG_FUNCTION (this << mobilityInfo.imsi);
+   m_mobilityInfo = mobilityInfo;
+}
+
+ClusterSap::NeighborInfo
+NeighborClusterInfoHeader::GetMobilityInfo(void) const {
+   NS_LOG_FUNCTION (this);
+   return m_mobilityInfo;
+}
+
+TypeId
+NeighborClusterInfoHeader::GetTypeId(void) {
+   static TypeId tid = TypeId("ns3::NeighborClusterInfoHeader").SetParent<Header>().AddConstructor<NeighborClusterInfoHeader>();
+   return tid;
+}
+
+TypeId
+NeighborClusterInfoHeader::GetInstanceTypeId(void) const {
+   return GetTypeId();
+}
+
+void
+NeighborClusterInfoHeader::Print(std::ostream &os) const {
+   NS_LOG_FUNCTION (this << &os);
+   os << "(seq=" << m_seq
+           << "IMSI=" << m_mobilityInfo.imsi
+           << "ClusterId=" << m_mobilityInfo.clusterId
+           << "Degree=" << m_mobilityInfo.degree
+           << "Position=" << m_mobilityInfo.position
+           <<")";
+}
+
+uint32_t
+NeighborClusterInfoHeader::GetSerializedSize(void) const {
+   NS_LOG_FUNCTION (this);
+   return sizeof(uint64_t) + sizeof(uint64_t)  + sizeof(ClusterSap::NeighborInfo);
+}
+
+void
+NeighborClusterInfoHeader::Serialize(Buffer::Iterator start) const {
+   NS_LOG_FUNCTION (this << &start);
+
+   Buffer::Iterator i = start;
+   i.WriteHtonU64(m_seq);
+   i.WriteHtonU64(m_clusterId);
+
+   // Write mobility structure
+   unsigned char temp[sizeof(ClusterSap::NeighborInfo)];
+   memcpy( temp, &m_mobilityInfo, sizeof(ClusterSap::NeighborInfo) );
+   i.Write(temp, sizeof(ClusterSap::NeighborInfo));
+
+}
+
+uint32_t
+NeighborClusterInfoHeader::Deserialize(Buffer::Iterator start) {
+   NS_LOG_INFO (this << &start);
+
+   Buffer::Iterator i = start;
+   m_seq = i.ReadNtohU64();
+   m_clusterId = i.ReadNtohU64();
+
+   unsigned char temp[sizeof(ClusterSap::NeighborInfo)];
+   i.Read(temp, sizeof(ClusterSap::NeighborInfo));
+   memcpy(&m_mobilityInfo, &temp, sizeof(ClusterSap::NeighborInfo));
+
+   return GetSerializedSize();
+}
+
+
 } // namespace ns3
