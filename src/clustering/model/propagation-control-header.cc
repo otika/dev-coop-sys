@@ -258,6 +258,205 @@ InterClusterPropagationHeader::Deserialize(Buffer::Iterator start) {
    return GetSerializedSize();
 }
 
+NS_OBJECT_ENSURE_REGISTERED(IntraClusterPropagationHeader);
+
+IntraClusterPropagationHeader::IntraClusterPropagationHeader() :
+   m_seq(0){
+   NS_LOG_FUNCTION (this);
+}
+
+IntraClusterPropagationHeader::~IntraClusterPropagationHeader(){
+   NS_LOG_FUNCTION (this);
+}
+
+void
+IntraClusterPropagationHeader::SetSeq(uint64_t seq) {
+   NS_LOG_FUNCTION (this << seq);
+   m_seq = seq;
+}
+
+uint64_t
+IntraClusterPropagationHeader::GetSeq(void) const {
+   NS_LOG_FUNCTION (this);
+   return m_seq;
+}
+
+void
+IntraClusterPropagationHeader::SetClusterId(uint64_t clusterId){
+    NS_LOG_FUNCTION (this << clusterId);
+    m_clusterId = clusterId;
+}
+
+uint64_t
+IntraClusterPropagationHeader::GetClusterId(void) const {
+    NS_LOG_FUNCTION (this);
+    return m_clusterId;
+}
+
+void
+IntraClusterPropagationHeader::SetIntraClusterInfo(ClusterSap::IntraClusterPropagationInfo info) {
+	m_intraClusterInfo = info;
+}
+
+ClusterSap::IntraClusterPropagationInfo
+IntraClusterPropagationHeader::GetIntraClusterInfo(void) const {
+	return m_intraClusterInfo;
+}
+
+
+TypeId
+IntraClusterPropagationHeader::GetTypeId(void) {
+   static TypeId tid = TypeId("ns3::IntraClusterPropagationHeader").SetParent<Header>().AddConstructor<IntraClusterPropagationHeader>();
+   return tid;
+}
+
+TypeId
+IntraClusterPropagationHeader::GetInstanceTypeId(void) const {
+   return GetTypeId();
+}
+
+void
+IntraClusterPropagationHeader::Print(std::ostream &os) const {
+    NS_LOG_FUNCTION (this << &os);
+    os << "( ClusterId=" << m_clusterId << " Seq=" << m_seq << ")";
+}
+
+uint32_t
+IntraClusterPropagationHeader::GetSerializedSize(void) const {
+   NS_LOG_FUNCTION (this);
+   return sizeof(uint64_t) + sizeof(uint64_t)
+		   + sizeof(ClusterSap::IntraClusterPropagationInfo);
+}
+
+void
+IntraClusterPropagationHeader::Serialize(Buffer::Iterator start) const {
+    NS_LOG_FUNCTION (this << &start);
+
+    Buffer::Iterator i = start;
+    i.WriteHtonU64(m_clusterId);
+    i.WriteHtonU64(m_seq);
+
+    // Write mobility structure
+    unsigned char temp[sizeof(ClusterSap::IntraClusterPropagationInfo)];
+    memcpy( temp, &m_intraClusterInfo, sizeof(ClusterSap::IntraClusterPropagationInfo));
+    i.Write(temp, sizeof(ClusterSap::IntraClusterPropagationInfo));
+}
+
+uint32_t
+IntraClusterPropagationHeader::Deserialize(Buffer::Iterator start) {
+   NS_LOG_INFO (this << &start);
+
+   Buffer::Iterator i = start;
+   m_clusterId = i.ReadNtohU64();
+   m_seq = i.ReadNtohU64();
+
+    unsigned char temp[sizeof(ClusterSap::IntraClusterPropagationInfo)];
+    i.Read(temp, sizeof(ClusterSap::IntraClusterPropagationInfo));
+    memcpy(&m_intraClusterInfo, &temp, sizeof(ClusterSap::IntraClusterPropagationInfo) );
+
+   return GetSerializedSize();
+}
+
+
+NS_OBJECT_ENSURE_REGISTERED(InterNodePropagationHeader);
+
+InterNodePropagationHeader::InterNodePropagationHeader() :
+   m_seq(0){
+   NS_LOG_FUNCTION (this);
+}
+
+InterNodePropagationHeader::~InterNodePropagationHeader(){
+   NS_LOG_FUNCTION (this);
+}
+
+void
+InterNodePropagationHeader::SetSeq(uint64_t seq) {
+   NS_LOG_FUNCTION (this << seq);
+   m_seq = seq;
+}
+
+uint64_t
+InterNodePropagationHeader::GetSeq(void) const {
+   NS_LOG_FUNCTION (this);
+   return m_seq;
+}
+
+void
+InterNodePropagationHeader::SetClusterId(uint64_t clusterId){
+    NS_LOG_FUNCTION (this << clusterId);
+    m_clusterId = clusterId;
+}
+
+uint64_t
+InterNodePropagationHeader::GetClusterId(void) const {
+    NS_LOG_FUNCTION (this);
+    return m_clusterId;
+}
+
+void
+InterNodePropagationHeader::SetInterNodeInfo(ClusterSap::InterNodePropagationInfo info) {
+	m_interNodeInfo = info;
+}
+
+ClusterSap::InterNodePropagationInfo
+InterNodePropagationHeader::GetInterNodeInfo(void) const {
+	return m_interNodeInfo;
+}
+
+
+TypeId
+InterNodePropagationHeader::GetTypeId(void) {
+   static TypeId tid = TypeId("ns3::InterNodePropagationHeader").SetParent<Header>().AddConstructor<InterNodePropagationHeader>();
+   return tid;
+}
+
+TypeId
+InterNodePropagationHeader::GetInstanceTypeId(void) const {
+   return GetTypeId();
+}
+
+void
+InterNodePropagationHeader::Print(std::ostream &os) const {
+    NS_LOG_FUNCTION (this << &os);
+    os << "( ClusterId=" << m_clusterId << " Seq=" << m_seq << ")";
+}
+
+uint32_t
+InterNodePropagationHeader::GetSerializedSize(void) const {
+   NS_LOG_FUNCTION (this);
+   return sizeof(uint64_t) + sizeof(uint64_t)
+		   + sizeof(ClusterSap::InterNodePropagationInfo);
+}
+
+void
+InterNodePropagationHeader::Serialize(Buffer::Iterator start) const {
+    NS_LOG_FUNCTION (this << &start);
+
+    Buffer::Iterator i = start;
+    i.WriteHtonU64(m_clusterId);
+    i.WriteHtonU64(m_seq);
+
+    // Write mobility structure
+    unsigned char temp[sizeof(ClusterSap::InterNodePropagationInfo)];
+    memcpy( temp, &m_interNodeInfo, sizeof(ClusterSap::InterNodePropagationInfo));
+    i.Write(temp, sizeof(ClusterSap::InterNodePropagationInfo));
+}
+
+uint32_t
+InterNodePropagationHeader::Deserialize(Buffer::Iterator start) {
+   NS_LOG_INFO (this << &start);
+
+   Buffer::Iterator i = start;
+   m_clusterId = i.ReadNtohU64();
+   m_seq = i.ReadNtohU64();
+
+    unsigned char temp[sizeof(ClusterSap::InterNodePropagationInfo)];
+    i.Read(temp, sizeof(ClusterSap::InterNodePropagationInfo));
+    memcpy(&m_interNodeInfo, &temp, sizeof(ClusterSap::InterNodePropagationInfo) );
+
+   return GetSerializedSize();
+}
+
 
 NS_OBJECT_ENSURE_REGISTERED(AckHeader);
 

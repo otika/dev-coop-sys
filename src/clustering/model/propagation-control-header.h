@@ -159,6 +159,116 @@ private:
 
 /**
  * \ingroup clustering
+ * \class IntraClusterPropagationHeader
+ * \brief Packet header for ClusterControlClient application.
+ *
+ * The header is made of a 64bits sequence number followed by
+ * a mobility information structure.
+ */
+class IntraClusterPropagationHeader: public Header {
+public:
+
+    IntraClusterPropagationHeader();
+    virtual ~IntraClusterPropagationHeader();
+
+    /**
+     * \param seq the sequence number
+     */
+    void SetSeq(uint64_t seq);
+
+    /**
+     * \return the sequence number
+     */
+    uint64_t GetSeq(void) const;
+
+    /**
+     * \param degree the degree of the node
+     */
+    void SetClusterId(uint64_t clusterId);
+
+    /**
+     * \return the degree of the node
+     */
+    uint64_t GetClusterId(void) const;
+
+    void SetIntraClusterInfo(ClusterSap::IntraClusterPropagationInfo info);
+
+    ClusterSap::IntraClusterPropagationInfo GetIntraClusterInfo(void) const;
+
+    /**
+     * \brief Get the type ID.
+     * \return the object TypeId
+     */
+    static TypeId GetTypeId(void);
+    virtual TypeId GetInstanceTypeId(void) const;
+    virtual void Print(std::ostream &os) const;
+    virtual uint32_t GetSerializedSize(void) const;
+    virtual void Serialize(Buffer::Iterator start) const;
+    virtual uint32_t Deserialize(Buffer::Iterator start);
+
+private:
+    uint64_t m_clusterId;       //!< Cluster id
+    uint64_t m_seq;             //!< Sequence number
+    ClusterSap::IntraClusterPropagationInfo m_intraClusterInfo;
+};
+
+/**
+ * \ingroup clustering
+ * \class InterNodePropagationHeader
+ * \brief Packet header for ClusterControlClient application.
+ *
+ * The header is made of a 64bits sequence number followed by
+ * a mobility information structure.
+ */
+class InterNodePropagationHeader: public Header {
+public:
+
+    InterNodePropagationHeader();
+    virtual ~InterNodePropagationHeader();
+
+    /**
+     * \param seq the sequence number
+     */
+    void SetSeq(uint64_t seq);
+
+    /**
+     * \return the sequence number
+     */
+    uint64_t GetSeq(void) const;
+
+    /**
+     * \param degree the degree of the node
+     */
+    void SetClusterId(uint64_t clusterId);
+
+    /**
+     * \return the degree of the node
+     */
+    uint64_t GetClusterId(void) const;
+
+    void SetInterNodeInfo(ClusterSap::InterNodePropagationInfo info);
+
+    ClusterSap::InterNodePropagationInfo GetInterNodeInfo(void) const;
+
+    /**
+     * \brief Get the type ID.
+     * \return the object TypeId
+     */
+    static TypeId GetTypeId(void);
+    virtual TypeId GetInstanceTypeId(void) const;
+    virtual void Print(std::ostream &os) const;
+    virtual uint32_t GetSerializedSize(void) const;
+    virtual void Serialize(Buffer::Iterator start) const;
+    virtual uint32_t Deserialize(Buffer::Iterator start);
+
+private:
+    uint64_t m_clusterId;       //!< Cluster id
+    uint64_t m_seq;             //!< Sequence number
+    ClusterSap::InterNodePropagationInfo m_interNodeInfo;
+};
+
+/**
+ * \ingroup clustering
  * \class AckHeader
  * \brief Packet header for ClusterControlClient application.
  *

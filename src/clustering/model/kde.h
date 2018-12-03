@@ -205,8 +205,9 @@ class Kde2d {
             sum += kernel(diff);
 
         }
-        double n = 1.0 * data_.size();
-        return sum / n;
+        //double n = 1.0 * data_.size();
+        //return sum / n;
+        return sum;
     };
 
     /// @brief Manually set bandwidth.

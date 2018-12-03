@@ -46,6 +46,7 @@ public:
 		constexpr static const double RANGE = 2.5;	// Communication Range inner Cluster
 		constexpr static const int DISTRO_MAP_SIZE = 5; // must be bigger than RANGE
 		constexpr static const int DISTRO_MAP_SCALE = 1.0;
+		constexpr static const double PROPAGATION_THETA = M_PI / 2;
 	};
 
 	enum NodeStatus{
@@ -112,6 +113,8 @@ public:
 	 */
 	const ClusterSap::NeighborInfo GetCurrentMobility() const;
 
+	const ClusterControlClient::NodeStatus GetNodeStatus() const;
+
 	/**
 	 * \brief Specify starting node
 	 */
@@ -134,9 +137,14 @@ private:
 
     void ExchangeDistroMap (void);    // Called at time specified by Start of ExchangeDistroMap
     void DecidePropagationParam(void);
-    void CalcPropagationDirection(uint64_t id, Vector propVector);
+    void TransmitPropagationDirection(uint64_t id, Vector propVector);
     uint64_t FindNodeByPosition(Vector pos);
     Time CalcPropagationDelay(Vector source, Vector destination, Vector direction);
+    bool IsInSector(Vector source, Vector destination, Vector direction, double radius, double theta = M_PI);
+
+    void ScheduleInterNodePropagation();
+    void StartNodePropagation();
+    void StopNodePropagation();
 
     void SendTo(uint64_t id, Ptr<Packet> packet, bool *ack = 0);
 
@@ -370,15 +378,16 @@ private:
     std::map<uint64_t, std::vector<float>> m_neighborDistroMap;
     std::map<uint64_t, bool> m_ackDistroMap;
 
-    Vector m_basePropagationVector = Vector(0, 0, 0);
-    Vector m_propagationVector = Vector(0, 0, 0);
+    uint64_t m_firstPropagationStartNodeId = std::numeric_limits<uint64_t>::max();
+    Vector m_basePropagationDirection = Vector(0, 0, 0);
+    Vector m_propagationDirection = Vector(0, 0, 0);
     Time m_firstPropagationStartingTime = Time::Max();
-    Time m_propagationStartingTime = Time::Max();
+    Time m_propagationStartTime = Time::Max();
 
    	std::vector<EventId> m_sendingInterClusterPropagationEvent;
-	Vector m_receiveDirectionSum = Vector(0, 0, 0);
-	int m_receiveDirectionNum = 0;
 	std::map<uint64_t, bool> m_ackInterClusterPropagation;
+
+	EventId m_interNodePropagationEvent;
 
     //!< Incident Info
     ClusterSap::IncidentInfo m_incidentInfo;

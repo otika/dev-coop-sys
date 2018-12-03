@@ -60,6 +60,18 @@ public:
     	Vector distination = Vector(0, 0, 0);
     };
 
+    struct IntraClusterPropagationInfo{
+    	uint64_t startingNode = std::numeric_limits<uint64_t>::max();
+    	Time startingTime = Time::Max();
+    	Vector direction = Vector(0, 0, 0);
+    };
+
+    struct InterNodePropagationInfo{
+    	Time startingTime = Time::Max();
+    	Vector direction = Vector(0, 0, 0);
+    	Vector position = Vector(0, 0, 0);
+    };
+
     enum IncidentType{
         EMERGENCY_EVENT = 0,
         NOTIFICATION_EVENT,
