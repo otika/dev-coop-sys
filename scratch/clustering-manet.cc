@@ -529,7 +529,8 @@ int main(int argc, char *argv[]) {
     /*---------------------- Simulation Default Values ---------------------*/
     std::string phyMode ("OfdmRate6MbpsBW10MHz");
 
-    uint16_t numberOfUes = 400;
+    //uint16_t numberOfUes = 400;
+    uint16_t numberOfUes = 100;
     int column = 10;
     double distance = 1.0;
 
@@ -581,7 +582,7 @@ int main(int argc, char *argv[]) {
     {
     	list[i] = i;
     }
-    shuffle<int>(list,numberOfUes);
+    shuffle<int>(list+1,numberOfUes-1);
     for (uint16_t i = 0; i < numberOfUes; i++)
     {
     	// Vector pos = Vector ( (i-i%column)/column*distance, i%column*distance, 0);

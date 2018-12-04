@@ -1181,6 +1181,7 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 				uint64_t clusterId = header.GetClusterId();
 				if(IsInSector(info.position, m_currentMobility.position, info.direction, Constants::RANGE, Constants::PROPAGATION_THETA)) {
 					if(m_propagationDirection.x == 0 && m_propagationDirection.y == 0){
+						std::cout << "[WARN] Alternate direction setted " << m_currentMobility.imsi << "@" << m_currentMobility.clusterId << std::endl;
 						m_propagationDirection = info.direction;
 					}
 					Time delay = CalcPropagationDelay(info.position, m_currentMobility.position, m_propagationDirection);
