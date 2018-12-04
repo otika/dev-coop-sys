@@ -46,7 +46,7 @@ public:
 		constexpr static const double RANGE = 2.5;	// Communication Range inner Cluster
 		constexpr static const int DISTRO_MAP_SIZE = 5; // must be bigger than RANGE
 		constexpr static const int DISTRO_MAP_SCALE = 1.0;
-		constexpr static const double PROPAGATION_THETA = M_PI / 2;
+		constexpr static const double PROPAGATION_THETA = M_PI;
 	};
 
 	enum NodeStatus{

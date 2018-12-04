@@ -1,1 +1,1 @@
-CXXFLAGS="-Wall -g -O0 -std=c++0x" ./waf configure
+CXXFLAGS="-Wall -g -O0 -std=c++0x" ./waf configure -d debug

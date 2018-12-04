@@ -171,24 +171,29 @@ ClusterControlClient::ClusterControlClient() {
 ClusterControlClient::~ClusterControlClient() {
 	NS_LOG_FUNCTION(this);
 
-	if(m_currentMobility.degree == ClusterSap::CH){
+	if(m_currentMobility.degree == ClusterSap::CH || true){
 		std::cout << "[" << m_currentMobility.imsi << "] " << ToString(m_currentMobility.degree) << ", "
 				<< m_currentMobility.clusterId << ", " << ToString(m_status)
 				<< ", sent:" << m_sentCounter << " times, recv:" << m_recvCounter
 				<< " times, Starting Time:" << m_firstPropagationStartingTime.GetSeconds()
-				<< " propagation direction:" << m_propagationDirection << std::endl;
+				<< " propagation direction:" << m_propagationDirection
+				<< "  Self Starting Time:" << m_propagationStartTime.GetSeconds() << std::endl;
+
+		if(m_currentMobility.degree == ClusterSap::CH){
 		for (std::map<uint64_t, ClusterSap::NeighborInfo>::iterator it =
 				m_neighborClusterList.begin(); it != m_neighborClusterList.end(); ++it) {
 			uint64_t id = it->first;
 			ClusterSap::NeighborInfo node = it->second;
 			std::cout << " * key: " << id << " clusterId: " << node.clusterId << " Degree:" << ToString (node.degree) << " Addr:";
 			node.address.GetLocal().Print(std::cout);
-			std::cout << "propagation direction:" << m_propagationDirection << std::endl;
+			std::cout << "propagation direction:" << m_propagationDirection
+					<< "fist time:" << m_firstPropagationStartingTime.GetSeconds() << " sec" <<  std::endl;
 //			std::cout << " ts: " << node.ts.GetSeconds () << " DistroMap: "
 //					<< std::boolalpha << (m_neighborDistroMap.find(id) != m_neighborDistroMap.end())
 //					<< " ack: " << (m_ackDistroMap.find(id)->second) << std::endl;
 		}
 		std::cout << std::endl;
+		}
 	}
 
 	m_socket = 0;
@@ -476,6 +481,10 @@ void ClusterControlClient::DecidePropagationParam(void){
 			startingNodeId = key;
 		}
 	}
+	if(m_currentMobility.isStartingNode){
+		hasStartingNode = true;
+		startingNodeId = m_currentMobility.imsi;
+	}
 	if(hasStartingNode == true){
 		MetaData::PropagationVectorMap *vectorMap = &MetaData::GetInstance().basePropagationVector;
 		MetaData::PropagationVectorMap::iterator it = vectorMap->find(startingNodeId);
@@ -483,6 +492,7 @@ void ClusterControlClient::DecidePropagationParam(void){
 			Time delay = Seconds(1.5);
 			m_firstPropagationStartingTime = Simulator::Now() + delay;
 			m_firstPropagationStartNodeId = startingNodeId;
+
 			TransmitPropagationDirection(startingNodeId, it->second); // First StartingNode's basePropagationDirection
 		}
 	}
@@ -518,7 +528,7 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 	}
 
 	// define outcome vector
-	Vector outcome_sum = propVector;
+	Vector outcome_sum = income_ave;
 	int outcome_num = 1;
 
 	Time sending_timeslot = Seconds(m_minimumTdmaSlot * m_maxUes);
@@ -622,7 +632,8 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 		}
 	}
 
-	m_propagationDirection = Vector(outcome_sum.x / outcome_num, outcome_sum.y / outcome_num, outcome_sum.z / outcome_num);
+	double abs = std::sqrt(outcome_sum.x * outcome_sum.x + outcome_sum.y * outcome_sum.y);
+	m_propagationDirection = Vector(income_velocity * outcome_sum.x / abs, income_velocity * outcome_sum.y / abs, 0.0);
 
 	// transmit intraPropagationInfo
 	if(m_clusterList.size() > 0){
@@ -639,14 +650,14 @@ uint64_t ClusterControlClient::FindNodeByPosition(Vector pos){
 	double ch_dz = pos.z - ch_pos.z;
 
 	uint64_t id = m_currentMobility.imsi;
-	double distance = std::sqrt(ch_dx * ch_dx + ch_dy * ch_dy + ch_dz * ch_dz);
+	double distance = ch_dx * ch_dx + ch_dy * ch_dy + ch_dz * ch_dz;
 
 	for(std::map<uint64_t, ClusterSap::NeighborInfo>::iterator it = m_clusterList.begin(); it != m_clusterList.end(); ++it) {
 		Vector p = it->second.position;
 		double dx = pos.x - p.x;
 		double dy = pos.y - p.y;
 		double dz = pos.z - p.z;
-		double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+		double dist = dx*dx + dy*dy + dz*dz;
 
 		if(distance > dist){
 			distance = dist;
@@ -667,8 +678,8 @@ Time ClusterControlClient::CalcPropagationDelay(Vector source, Vector destinatio
 	double delta_horizontal = (a_*delta.x + b_*delta.y) / verocity; // dalta_horizontal
 	//double delta_vertical   = (c_*delta.x + d_*delta.y) /verocity;  // delta_vertical
 
-	Time delta_time = Seconds(delta_horizontal / verocity);
-
+	Time delta_time = Seconds(delta_horizontal);
+	// std::cout << "[DELAY]: " << delta_time.GetSeconds() << " sec" << std::endl;
 	return delta_time;
 }
 
@@ -689,7 +700,7 @@ bool ClusterControlClient::IsInSector(Vector source, Vector destination, Vector 
 	double sx = std::cos(-theta/2);
 	double sy = std::sin(-theta/2);
 
-	if(std::sqrt(delta.x * delta.x + delta.y * delta.y) > radius) {
+	if(delta.x * delta.x + delta.y * delta.y > radius*radius) {
 		return false;
 	}
 
@@ -730,11 +741,11 @@ void ClusterControlClient::ScheduleInterNodePropagation(void) {
 }
 
 void ClusterControlClient::StartNodePropagation(void) {
-	Time running_time = Seconds(0.5);
+	Time running_time = Seconds(1.0);
 	m_status = PROPAGATION_RUNNING;
 	std::cout << "StartProp Running  " << m_currentMobility.imsi << " @ " << Simulator::Now().GetSeconds() << "sec" << std::endl;
 	Send();
-	Simulator::Schedule(Simulator::Now() + running_time, &ClusterControlClient::StopNodePropagation, this);
+	Simulator::Schedule(running_time, &ClusterControlClient::StopNodePropagation, this);
 }
 
 void ClusterControlClient::StopNodePropagation(void) {
@@ -1184,7 +1195,10 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 						std::cout << "[WARN] Alternate direction setted " << m_currentMobility.imsi << "@" << m_currentMobility.clusterId << std::endl;
 						m_propagationDirection = info.direction;
 					}
-					Time delay = CalcPropagationDelay(info.position, m_currentMobility.position, m_propagationDirection);
+					// Time delay = CalcPropagationDelay(info.position, m_currentMobility.position, m_propagationDirection);
+					double distance = CalculateDistance(info.position, m_currentMobility.position);
+					double velocity = std::sqrt(m_propagationDirection.x * m_propagationDirection.x + m_propagationDirection.y * m_propagationDirection.y);
+					Time delay = Seconds(distance/velocity);
 					Time newTime = info.startingTime + delay;
 					if(newTime < m_propagationStartTime &&
 							Simulator::Now() < m_propagationStartTime){
@@ -1280,8 +1294,9 @@ void ClusterControlClient::HandleReadInterCluster(Ptr<Socket> socket) {
 				uint64_t candidateId = FindNodeByPosition(info.distination);
 				Vector candidatePos = m_clusterList.find(candidateId)->second.position;
 				Time delay = CalcPropagationDelay(info.source, candidatePos, info.direction);
+				Time newTime = (info.startingTime + delay) * 1.3;
 
-				if(m_firstPropagationStartingTime > (info.startingTime + delay)) {
+				if(m_firstPropagationStartingTime > (info.startingTime + delay) ) {
 					m_firstPropagationStartingTime = info.startingTime + delay;
 					m_firstPropagationStartNodeId = candidateId;
 
