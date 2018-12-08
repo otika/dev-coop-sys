@@ -43,8 +43,8 @@ public:
 	struct Constants
 	{
 		// Constant
-		constexpr static const double RANGE = 2.5;	// Communication Range inner Cluster
-		constexpr static const int DISTRO_MAP_SIZE = 5; // must be bigger than RANGE
+		constexpr static const double RANGE = 5;	// Communication Range inner Cluster
+		constexpr static const int DISTRO_MAP_SIZE = 11; // must be bigger than RANGE
 		constexpr static const int DISTRO_MAP_SCALE = 1.0;
 		constexpr static const double PROPAGATION_THETA = M_PI;
 	};
@@ -123,7 +123,11 @@ public:
 	/**
 	 * \brief Specify propagation direction and velocity
 	 */
-	void SetBasePropagationVector(Vector vector);
+	void SetBasePropagationDirection(Vector vector);
+
+	const Vector GetPropagationDirection(void) const;
+
+	void HandlePacketInterCluster (Ptr<Packet> packet);
 
 protected:
     virtual void DoDispose (void);
@@ -175,6 +179,8 @@ private:
 	 * \param socket the receiving socket
 	 */
     void HandleReadInterCluster (Ptr<Socket> socket);
+
+
 
 	/**
 	 * \brief Handle an incoming connection

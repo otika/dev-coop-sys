@@ -27,6 +27,7 @@
 #include "ns3/mobility-module.h"
 #include "ns3/wifi-module.h"
 #include "ns3/aodv-module.h"
+#include "ns3/olsr-module.h"
 #include "ns3/yans-wifi-helper.h"
 #include "ns3/wifi-80211p-helper.h"
 #include "ns3/applications-module.h"
@@ -48,432 +49,32 @@
 #define SIMULATION_TIME_FORMAT(s) Seconds(s)
 
 #define STD_NODE_SIZE 0.1
-#define WIFI_POWER -25 // -24
+#define WIFI_POWER -22 // -24
 
 using namespace ns3;
 NS_LOG_COMPONENT_DEFINE("ClusteringExample");
 
 AnimationInterface *pAnim = 0;
 NodeContainer nodes_copy;
-std::ofstream outputfile("scratch/render.txt");
+
+char arrange_file[] = "/media/sf_WaveVisualizer/result/round-big/arrange.txt";
+char render_file[]  = "/media/sf_WaveVisualizer/result/round-big/render.txt";
+//char render_file[] = "scratch/render.txt";
+std::ofstream outputfile(render_file);
 
 struct Rgb {
     uint8_t r, g, b;
 };
 
-static const Vector position_list[] ={
-		{0, 0, 0},
-		{1, 0, 0},
-		{2, 0, 0},
-		{3, 0, 0},
-		{4, 0, 0},
-		{5, 0, 0},
-		{6, 0, 0},
-		{7, 0, 0},
-		{8, 0, 0},
-		{9, 0, 0},
-		{0, 1, 0},
-		{1, 1, 0},
-		{2, 1, 0},
-		{3, 1, 0},
-		{4, 1, 0},
-		{5, 1, 0},
-		{6, 1, 0},
-		{7, 1, 0},
-		{8, 1, 0},
-		{9, 1, 0},
-		{0, 2, 0},
-		{1, 2, 0},
-		{2, 2, 0},
-		{3, 2, 0},
-		{4, 2, 0},
-		{5, 2, 0},
-		{6, 2, 0},
-		{7, 2, 0},
-		{8, 2, 0},
-		{9, 2, 0},
-		{0, 3, 0},
-		{1, 3, 0},
-		{2, 3, 0},
-		{3, 3, 0},
-		{4, 3, 0},
-		{5, 3, 0},
-		{6, 3, 0},
-		{7, 3, 0},
-		{8, 3, 0},
-		{9, 3, 0},
-		{0, 4, 0},
-		{1, 4, 0},
-		{2, 4, 0},
-		{3, 4, 0},
-		{4, 4, 0},
-		{5, 4, 0},
-		{6, 4, 0},
-		{7, 4, 0},
-		{8, 4, 0},
-		{9, 4, 0},
-//		{0, 5, 0},
-//		{1, 5, 0},
-//		{2, 5, 0},
-//		{3, 5, 0},
-//		{4, 5, 0},
-//		{5, 5, 0},
-//		{6, 5, 0},
-//		{7, 5, 0},
-//		{8, 5, 0},
-//		{9, 5, 0},
-//		{0, 6, 0},
-//		{1, 6, 0},
-//		{2, 6, 0},
-//		{3, 6, 0},
-//		{4, 6, 0},
-//		{5, 6, 0},
-//		{6, 6, 0},
-//		{7, 6, 0},
-//		{8, 6, 0},
-//		{9, 6, 0},
-//		{0, 7, 0},
-//		{1, 7, 0},
-//		{2, 7, 0},
-//		{3, 7, 0},
-//		{4, 7, 0},
-//		{5, 7, 0},
-//		{6, 7, 0},
-//		{7, 7, 0},
-//		{8, 7, 0},
-//		{9, 7, 0},
-//		{0, 8, 0},
-//		{1, 8, 0},
-//		{2, 8, 0},
-//		{3, 8, 0},
-//		{4, 8, 0},
-//		{5, 8, 0},
-//		{6, 8, 0},
-//		{7, 8, 0},
-//		{8, 8, 0},
-//		{9, 8, 0},
-//		{0, 9, 0},
-//		{1, 9, 0},
-//		{2, 9, 0},
-//		{3, 9, 0},
-//		{4, 9, 0},
-//		{5, 9, 0},
-//		{6, 9, 0},
-//		{7, 9, 0},
-//		{8, 9, 0},
-//		{9, 9, 0},
-
-		{10, 0, 0},
-		{11, 0, 0},
-		{12, 0, 0},
-		{13, 0, 0},
-		{14, 0, 0},
-		{15, 0, 0},
-		{16, 0, 0},
-		{17, 0, 0},
-		{18, 0, 0},
-		{19, 0, 0},
-		{10, 1, 0},
-		{11, 1, 0},
-		{12, 1, 0},
-		{13, 1, 0},
-		{14, 1, 0},
-		{15, 1, 0},
-		{16, 1, 0},
-		{17, 1, 0},
-		{18, 1, 0},
-		{19, 1, 0},
-		{10, 2, 0},
-		{11, 2, 0},
-		{12, 2, 0},
-		{13, 2, 0},
-		{14, 2, 0},
-		{15, 2, 0},
-		{16, 2, 0},
-		{17, 2, 0},
-		{18, 2, 0},
-		{19, 2, 0},
-		{10, 3, 0},
-		{11, 3, 0},
-		{12, 3, 0},
-		{13, 3, 0},
-		{14, 3, 0},
-		{15, 3, 0},
-		{16, 3, 0},
-		{17, 3, 0},
-		{18, 3, 0},
-		{19, 3, 0},
-		{10, 4, 0},
-		{11, 4, 0},
-		{12, 4, 0},
-		{13, 4, 0},
-		{14, 4, 0},
-		{15, 4, 0},
-		{16, 4, 0},
-		{17, 4, 0},
-		{18, 4, 0},
-		{19, 4, 0},
-//		{10, 5, 0},
-//		{11, 5, 0},
-//		{12, 5, 0},
-//		{13, 5, 0},
-//		{14, 5, 0},
-		{15, 5, 0},
-		{16, 5, 0},
-		{17, 5, 0},
-		{18, 5, 0},
-		{19, 5, 0},
-//		{10, 6, 0},
-//		{11, 6, 0},
-//		{12, 6, 0},
-//		{13, 6, 0},
-//		{14, 6, 0},
-		{15, 6, 0},
-		{16, 6, 0},
-		{17, 6, 0},
-		{18, 6, 0},
-		{19, 6, 0},
-//		{10, 7, 0},
-//		{11, 7, 0},
-//		{12, 7, 0},
-//		{13, 7, 0},
-//		{14, 7, 0},
-		{15, 7, 0},
-		{16, 7, 0},
-		{17, 7, 0},
-		{18, 7, 0},
-		{19, 7, 0},
-//		{10, 8, 0},
-//		{11, 8, 0},
-//		{12, 8, 0},
-//		{13, 8, 0},
-//		{14, 8, 0},
-		{15, 8, 0},
-		{16, 8, 0},
-		{17, 8, 0},
-		{18, 8, 0},
-		{19, 8, 0},
-//		{10, 9, 0},
-//		{11, 9, 0},
-//		{12, 9, 0},
-//		{13, 9, 0},
-//		{14, 9, 0},
-		{15, 9, 0},
-		{16, 9, 0},
-		{17, 9, 0},
-		{18, 9, 0},
-		{19, 9, 0},
-
-//		{10, 10, 0},
-//		{11, 10, 0},
-//		{12, 10, 0},
-//		{13, 10, 0},
-//		{14, 10, 0},
-		{15, 10, 0},
-		{16, 10, 0},
-		{17, 10, 0},
-		{18, 10, 0},
-		{19, 10, 0},
-//		{10, 11, 0},
-//		{11, 11, 0},
-//		{12, 11, 0},
-//		{13, 11, 0},
-//		{14, 11, 0},
-		{15, 11, 0},
-		{16, 11, 0},
-		{17, 11, 0},
-		{18, 11, 0},
-		{19, 11, 0},
-//		{10, 12, 0},
-//		{11, 12, 0},
-//		{12, 12, 0},
-//		{13, 12, 0},
-//		{14, 12, 0},
-		{15, 12, 0},
-		{16, 12, 0},
-		{17, 12, 0},
-		{18, 12, 0},
-		{19, 12, 0},
-//		{10, 13, 0},
-//		{11, 13, 0},
-//		{12, 13, 0},
-//		{13, 13, 0},
-//		{14, 13, 0},
-		{15, 13, 0},
-		{16, 13, 0},
-		{17, 13, 0},
-		{18, 13, 0},
-		{19, 13, 0},
-//		{10, 14, 0},
-//		{11, 14, 0},
-//		{12, 14, 0},
-//		{13, 14, 0},
-//		{14, 14, 0},
-		{15, 14, 0},
-		{16, 14, 0},
-		{17, 14, 0},
-		{18, 14, 0},
-		{19, 14, 0},
-//		{10, 15, 0},
-//		{11, 15, 0},
-//		{12, 15, 0},
-//		{13, 15, 0},
-//		{14, 15, 0},
-		{15, 15, 0},
-		{16, 15, 0},
-		{17, 15, 0},
-		{18, 15, 0},
-		{19, 15, 0},
-//		{10, 16, 0},
-//		{11, 16, 0},
-//		{12, 16, 0},
-//		{13, 16, 0},
-//		{14, 16, 0},
-		{15, 16, 0},
-		{16, 16, 0},
-		{17, 16, 0},
-		{18, 16, 0},
-		{19, 16, 0},
-//		{10, 17, 0},
-//		{11, 17, 0},
-//		{12, 17, 0},
-//		{13, 17, 0},
-//		{14, 17, 0},
-		{15, 17, 0},
-		{16, 17, 0},
-		{17, 17, 0},
-		{18, 17, 0},
-		{19, 17, 0},
-//		{10, 18, 0},
-//		{11, 18, 0},
-//		{12, 18, 0},
-//		{13, 18, 0},
-//		{14, 18, 0},
-		{15, 18, 0},
-		{16, 18, 0},
-		{17, 18, 0},
-		{18, 18, 0},
-		{19, 18, 0},
-//		{10, 19, 0},
-//		{11, 19, 0},
-//		{12, 19, 0},
-//		{13, 19, 0},
-//		{14, 19, 0},
-		{15, 19, 0},
-		{16, 19, 0},
-		{17, 19, 0},
-		{18, 19, 0},
-		{19, 19, 0}
-/*
-		{10, 20, 0},
-		{11, 20, 0},
-		{12, 20, 0},
-		{13, 20, 0},
-		{14, 20, 0},
-		{15, 20, 0},
-		{16, 20, 0},
-		{17, 20, 0},
-		{18, 20, 0},
-		{19, 20, 0},
-		{10, 21, 0},
-		{11, 21, 0},
-		{12, 21, 0},
-		{13, 21, 0},
-		{14, 21, 0},
-		{15, 21, 0},
-		{16, 21, 0},
-		{17, 21, 0},
-		{18, 21, 0},
-		{19, 21, 0},
-		{10, 22, 0},
-		{11, 22, 0},
-		{12, 22, 0},
-		{13, 22, 0},
-		{14, 22, 0},
-		{15, 22, 0},
-		{16, 22, 0},
-		{17, 22, 0},
-		{18, 22, 0},
-		{19, 22, 0},
-		{10, 23, 0},
-		{11, 23, 0},
-		{12, 23, 0},
-		{13, 23, 0},
-		{14, 23, 0},
-		{15, 23, 0},
-		{16, 23, 0},
-		{17, 23, 0},
-		{18, 23, 0},
-		{19, 23, 0},
-		{10, 24, 0},
-		{11, 24, 0},
-		{12, 24, 0},
-		{13, 24, 0},
-		{14, 24, 0},
-		{15, 24, 0},
-		{16, 24, 0},
-		{17, 24, 0},
-		{18, 24, 0},
-		{19, 24, 0},
-		{10, 25, 0},
-		{11, 25, 0},
-		{12, 25, 0},
-		{13, 25, 0},
-		{14, 25, 0},
-		{15, 25, 0},
-		{16, 25, 0},
-		{17, 25, 0},
-		{18, 25, 0},
-		{19, 25, 0}
-		{10, 26, 0},
-		{11, 26, 0},
-		{12, 26, 0},
-		{13, 26, 0},
-		{14, 26, 0},
-		{15, 26, 0},
-		{16, 26, 0},
-		{17, 26, 0},
-		{18, 26, 0},
-		{19, 26, 0},
-		{10, 27, 0},
-		{11, 27, 0},
-		{12, 27, 0},
-		{13, 27, 0},
-		{14, 27, 0},
-		{15, 27, 0},
-		{16, 27, 0},
-		{17, 27, 0},
-		{18, 27, 0},
-		{19, 27, 0},
-		{10, 28, 0},
-		{11, 28, 0},
-		{12, 28, 0},
-		{13, 28, 0},
-		{14, 28, 0},
-		{15, 28, 0},
-		{16, 28, 0},
-		{17, 28, 0},
-		{18, 28, 0},
-		{19, 28, 0},
-		{10, 29, 0},
-		{11, 29, 0},
-		{12, 29, 0},
-		{13, 29, 0},
-		{14, 29, 0},
-		{15, 29, 0},
-		{16, 29, 0},
-		{17, 29, 0},
-		{18, 29, 0},
-		{19, 29, 0}
- */
-
-};
 
 template<class T> void shuffle(T ary[],int size);
 Rgb getColor(int id);
 Rgb getNewColor(uint8_t differential);
 void StatusTraceCallback (Ptr<const ClusterControlClient> app);
 void OutputRender(void);
+
+Vector split(std::string& input, char delimiter);
+std::vector<Vector> load_arrange(std::ifstream& ifs);
 
 int main(int argc, char *argv[]) {
 
@@ -491,23 +92,34 @@ int main(int argc, char *argv[]) {
     /*---------------------- Simulation Default Values ---------------------*/
     std::string phyMode ("OfdmRate6MbpsBW10MHz");
 
-    //uint16_t numberOfUes = 400;
-    uint16_t numberOfUes = 150;
+    std::ifstream ifs(arrange_file);
+    std::vector<Vector> position_list = load_arrange(ifs);
+
+    std::cout << "Loaded " << position_list.size() << " positions" << std::endl;
+
+    uint16_t numberOfMaxUes = position_list.size();
+    uint16_t numberOfUes = 700;
+
+    if (numberOfMaxUes < numberOfUes){
+    	std::cout << "numberOfUes is too large" << std::endl;
+    	numberOfUes = numberOfMaxUes;
+    }
+
     int column = 10;
-    double distance = 1.1;
+    double distance = 1.0;
 
     double minimumTdmaSlot = 0.001;         /// Time difference between 2 transmissions
     double clusterTimeMetric = 5.0;         /// Clustering Time Metric for Waiting Time calculation
     double incidentWindow = 40.0;
 
-    double simTime = 30.0;
+    double simTime = 120.0;
 
     /*-------------------- Set explicitly default values -------------------*/
-    Config::SetDefault ("ns3::WifiRemoteStationManager::FragmentationThreshold",
-                            StringValue ("2200"));
+//    Config::SetDefault ("ns3::WifiRemoteStationManager::FragmentationThreshold",
+//                            StringValue ("2200"));
     // turn off RTS/CTS for frames below 2200 bytes
-    Config::SetDefault ("ns3::WifiRemoteStationManager::RtsCtsThreshold",
-                            StringValue ("2200"));
+//    Config::SetDefault ("ns3::WifiRemoteStationManager::RtsCtsThreshold",
+//                            StringValue ("2200"));
     // Fix non-unicast data rate to be the same as that of unicast
     Config::SetDefault ("ns3::WifiRemoteStationManager::NonUnicastMode",
                             StringValue (phyMode));
@@ -526,9 +138,13 @@ int main(int argc, char *argv[]) {
     NodeContainer nodes;
     nodes.Create(numberOfUes);
 
-    AodvHelper aodv;
+    //AodvHelper aodv;
+//    OlsrHelper olsr;
+//    olsr.Set("HelloInterval", TimeValue(Seconds(4.0)));
+//    olsr.Set("TcInterval", TimeValue(Seconds(5.0)));
     InternetStackHelper internet;
-    internet.SetRoutingHelper(aodv);
+    // internet.SetRoutingHelper(aodv);
+    //internet.SetRoutingHelper(olsr);
     internet.Install(nodes);
 
     /*-------------------- Install Mobility Model in Ue --------------------*/
@@ -545,12 +161,12 @@ int main(int argc, char *argv[]) {
 //    	list[i] = i;
 //    }
 //    shuffle<int>(list+1,numberOfUes-1);
-    int list[175];
-	for (int i = 0; i < 175; i++)
+    int list[numberOfMaxUes];
+	for (int i = 0; i < numberOfMaxUes; i++)
 	{
 		list[i] = i;
 	}
-    shuffle<int>(list+1, 175 - 1);
+    shuffle<int>(list+1, numberOfMaxUes - 1);
     for (int i = 0; i < numberOfUes; i++)
     {
     	// Vector pos = Vector ( (i-i%column)/column*distance, i%column*distance, 0);
@@ -622,12 +238,12 @@ int main(int argc, char *argv[]) {
         super_app->TraceConnectWithoutContext("Status", MakeCallback(&StatusTraceCallback));
 
         Ptr<ClusterControlClient> app = Ptr<ClusterControlClient> ( dynamic_cast<ClusterControlClient *> (PeekPointer(super_app)) );
-        app->SetClusteringStartTime(Seconds(0.1 + tdmaStart));
-        app->SetClusteringStopTime(Seconds(3.0 + tdmaStart));
+        app->SetClusteringStartTime(Seconds(1.0 + tdmaStart));
+        app->SetClusteringStopTime(Seconds(8.0 + tdmaStart));
 
         if(u == 0) {
         	app->SetStartingNode(true);
-        	app->SetBasePropagationVector(Vector(1.5, 0.0, 0.0));
+        	app->SetBasePropagationDirection(Vector(1.0, 0.0, 0.0));
         }
     }
 
@@ -787,6 +403,7 @@ void OutputRender(void){
 		Ptr<ClusterControlClient> app = Ptr<ClusterControlClient> ( dynamic_cast<ClusterControlClient *> (PeekPointer(super_app)) );
 		ClusterSap::NeighborInfo info = app->GetCurrentMobility();
 		ClusterControlClient::NodeStatus nodeStatus = app->GetNodeStatus();
+		Vector direction = app->GetPropagationDirection();
 		int status = 0;
 		if(nodeStatus == ClusterControlClient::PROPAGATION_READY){
 			status = 1;
@@ -815,11 +432,37 @@ void OutputRender(void){
 				<< info.position.y	<< " " 		// pos.y
 				<< info.position.z	<< " "		// pos.z
 				<< 0				<< " "		// state (ready, active, finish)
-				<< (int)rgb.r			<< " "
-				<< (int)rgb.g			<< " "
-				<< (int)rgb.b			<< " "
-				<< status 				<< " ";
+				<< (int)rgb.r		<< " "
+				<< (int)rgb.g		<< " "
+				<< (int)rgb.b		<< " "
+				<< status 			<< " "
+				<< direction.x 		<< " "
+				<< direction.y 		<< " ";
 	}
 	outputfile << std::endl;
-	Simulator::Schedule(Seconds(0.1) ,&OutputRender);
+	Simulator::Schedule(Seconds(0.2) ,&OutputRender);
+}
+
+Vector split(std::string& input, char delimiter)
+{
+    std::istringstream stream(input);
+    std::string field;
+    Vector result;
+    std::getline(stream, field, delimiter);
+    result.x = std::stod(field);
+    std::getline(stream, field, delimiter);
+    result.y = std::stod(field);
+
+    return result;
+}
+
+std::vector<Vector> load_arrange(std::ifstream& ifs)
+{
+    std::string line;
+    std::vector<Vector> arrange;
+    while (std::getline(ifs, line)) {
+	Vector v = split(line, ' ');
+        arrange.push_back(v);
+    }
+    return arrange;
 }

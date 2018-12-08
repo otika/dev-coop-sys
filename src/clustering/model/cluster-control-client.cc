@@ -165,7 +165,6 @@ ClusterControlClient::ClusterControlClient() {
 	m_sendEvent = EventId();
 	m_chElectionEvent = EventId();
 
-	std::map<uint64_t, ClusterSap::NeighborInfo> info = MetaData::GetInstance().chInfo;
 }
 
 ClusterControlClient::~ClusterControlClient() {
@@ -175,23 +174,42 @@ ClusterControlClient::~ClusterControlClient() {
 		std::cout << "[" << m_currentMobility.imsi << "] " << ToString(m_currentMobility.degree) << ", "
 				<< m_currentMobility.clusterId << ", " << ToString(m_status)
 				<< ", sent:" << m_sentCounter << " times, recv:" << m_recvCounter
-				<< " times, Starting Time:" << m_firstPropagationStartingTime.GetSeconds()
-				<< " propagation direction:" << m_propagationDirection
-				<< "  Self Starting Time:" << m_propagationStartTime.GetSeconds() << std::endl;
+				<< " times, propagation direction:" << m_propagationDirection
+				<< " Self Start Time:" << m_propagationStartTime.GetSeconds()
+				<< std::boolalpha
+				<< " IsStartingNode:" << m_currentMobility.isStartingNode;
+		if(m_currentMobility.isStartingNode || m_currentMobility.degree == ClusterSap::CH){
+			std::cout << " First Start Time:" << m_firstPropagationStartingTime.GetSeconds();
+		}
+		std::cout << std::endl;
 
 		if(m_currentMobility.degree == ClusterSap::CH){
-		for (std::map<uint64_t, ClusterSap::NeighborInfo>::iterator it =
-				m_neighborClusterList.begin(); it != m_neighborClusterList.end(); ++it) {
-			uint64_t id = it->first;
-			ClusterSap::NeighborInfo node = it->second;
-			std::cout << " * key: " << id << " clusterId: " << node.clusterId << " Degree:" << ToString (node.degree) << " Addr:";
-			node.address.GetLocal().Print(std::cout);
-			std::cout << "propagation direction:" << m_propagationDirection
-					<< "fist time:" << m_firstPropagationStartingTime.GetSeconds() << " sec" <<  std::endl;
-//			std::cout << " ts: " << node.ts.GetSeconds () << " DistroMap: "
-//					<< std::boolalpha << (m_neighborDistroMap.find(id) != m_neighborDistroMap.end())
-//					<< " ack: " << (m_ackDistroMap.find(id)->second) << std::endl;
-		}
+			std::cout << "neighbor cluster list" << std::endl;
+			for (std::map<uint64_t, ClusterSap::NeighborInfo>::iterator it =
+					m_neighborClusterList.begin(); it != m_neighborClusterList.end(); ++it) {
+				uint64_t id = it->first;
+				ClusterSap::NeighborInfo node = it->second;
+				std::cout << " * key: " << id << " clusterId: " << node.clusterId << " Degree:" << ToString (node.degree) << " Addr:";
+				node.address.GetLocal().Print(std::cout);
+				std::cout << std::endl;
+	//			std::cout << " ts: " << node.ts.GetSeconds () << " DistroMap: "
+	//					<< std::boolalpha << (m_neighborDistroMap.find(id) != m_neighborDistroMap.end())
+	//					<< " ack: " << (m_ackDistroMap.find(id)->second) << std::endl;
+			}
+
+
+			std::cout << "cluster list" << std::endl;
+			for (std::map<uint64_t, ClusterSap::NeighborInfo>::iterator it =
+					m_clusterList.begin(); it != m_clusterList.end(); ++it) {
+				uint64_t id = it->first;
+				ClusterSap::NeighborInfo node = it->second;
+				std::cout << " * key: " << id << " clusterId: " << node.clusterId << " Degree:" << ToString (node.degree) << " Addr:";
+				node.address.GetLocal().Print(std::cout);
+				std::cout << " propagation direction:" << m_propagationDirection
+						<< std::boolalpha << " IsStartingNode:" << node.isStartingNode;
+				std::cout << std::endl;
+			}
+
 		std::cout << std::endl;
 		}
 	}
@@ -277,11 +295,9 @@ void ClusterControlClient::StartApplication(void) {
 		NS_FATAL_ERROR("Error: Maximum number of ues is 100.");
 	}
 
-	StartListeningLocal();
+	MetaData::GetInstance().RegisterInstance(GetNode()->GetId(), this);
 
-//	ScheduleTransmit(Seconds(m_timeWindow));
-//	AcquireMobilityInfo();
-//	Simulator::Schedule(Seconds(m_minimumTdmaSlot * m_maxUes), &ClusterControlClient::UpdateNeighborList, this);
+	StartListeningLocal();
 }
 
 void ClusterControlClient::StartListeningLocal(void) // Called at time specified by Start
@@ -353,7 +369,6 @@ void ClusterControlClient::ConnectSocketInterCH(void){
 		// socket->Connect(neighborCH.address.GetLocal());
 		uint16_t controlPort = 50000;
 		InetSocketAddress addr(neighborCH.address.GetLocal(), controlPort);
-		std::cout << m_currentMobility.imsi << "->"<< itSearch->first << " addr " << addr << std::endl;
 		socket->Connect(addr);
 		socket->ShutdownRecv();
 	}
@@ -428,7 +443,7 @@ void ClusterControlClient::ExchangeDistroMap (void){
 		++m_sentCounter;
 
 		packet->AddHeader(distroMapHeader);
-		Simulator::Schedule(Seconds(time), &ClusterControlClient::SendTo, this, id, packet, (bool*)&(it->second));
+		// Simulator::Schedule(Seconds(time), &ClusterControlClient::SendTo, this, id, packet, (bool*)&(it->second));
 		time += (m_minimumTdmaSlot * (id + m_currentMobility.imsi));
 	}
 }
@@ -489,7 +504,7 @@ void ClusterControlClient::DecidePropagationParam(void){
 		MetaData::PropagationVectorMap *vectorMap = &MetaData::GetInstance().basePropagationVector;
 		MetaData::PropagationVectorMap::iterator it = vectorMap->find(startingNodeId);
 		if(it != vectorMap->end()){
-			Time delay = Seconds(1.5);
+			Time delay = Seconds(5.0);
 			m_firstPropagationStartingTime = Simulator::Now() + delay;
 			m_firstPropagationStartNodeId = startingNodeId;
 
@@ -528,8 +543,10 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 	}
 
 	// define outcome vector
-	Vector outcome_sum = income_ave;
-	int outcome_num = 1;
+	Vector outcome_sum;
+	int outcome_num = 0;
+//	Vector outcome_sum = income_ave;
+//	int outcome_num = 1;
 
 	Time sending_timeslot = Seconds(m_minimumTdmaSlot * m_maxUes);
 	for(MetaData::DistroMap::iterator it = m_neighborDistroMap.begin();
@@ -553,14 +570,14 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 		for(std::vector<float>::iterator ite = dist.begin(); ite != dist.end(); ++ite) {
 			float value = *ite;
 
-			if(value > 1.5) {
+			if(value > 1.0) {
 				int index = std::distance(dist.begin(), ite);
 				double x = (( index % Constants::DISTRO_MAP_SIZE ) - (int)(Constants::DISTRO_MAP_SIZE/2)) * Constants::DISTRO_MAP_SCALE + basePosition.x;
 				double y = (( (index - index % Constants::DISTRO_MAP_SIZE ) / Constants::DISTRO_MAP_SIZE ) - (int)(Constants::DISTRO_MAP_SIZE/2)) * Constants::DISTRO_MAP_SCALE + basePosition.y;
 				double dx = x - startingPosition.x;
 				double dy = y - startingPosition.y;
 
-				if(IsInSector(startingPosition, Vector(x,y,0), income_ave, 5.0, Constants::PROPAGATION_THETA)){
+				if(IsInSector(startingPosition, Vector(x,y,0), income_ave, 100.0, Constants::PROPAGATION_THETA)){
 					double distance = std::sqrt(dx*dx + dy*dy);
 					// std::cout << key << "(" << x << ", " << y << ") distance:" << distance << " horizontal:" << horizontal << " vertical:" << vertical << std::endl;
 					candidate_found = true;
@@ -570,28 +587,6 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 						candidate_outcome = Vector(income_velocity * dx/distance, income_velocity * dy/distance, 0);
 					}
 				}
-
-//				double distance = std::sqrt(dx*dx + dy*dy);
-//				if( distance < 5.0 ) {
-//					double a_ =  income_ave.x;  //  d;
-//					double b_ =  income_ave.y;  // -c;
-//					double c_ = -income_ave.y;  // -b;
-//					double d_ =  income_ave.x;  //  a
-//					double horizontal = a_*dx + b_*dy;
-//					double vertical   = c_*dx + d_*dy;
-//					std::cout << horizontal << ", " << vertical << std::endl;
-//
-//					if(horizontal > 0.0){
-//						// std::cout << key << "(" << x << ", " << y << ") distance:" << distance << " horizontal:" << horizontal << " vertical:" << vertical << std::endl;
-//						candidate_found = true;
-//						if(candidate_distance > distance) {
-//							candidate_distance = distance;
-//							candidate_pos = Vector(x, y, 0);
-//							candidate_outcome = Vector(income_velocity * dx/distance, income_velocity * dy/distance, 0);
-//						}
-//					}
-//				}
-
 			}
 		}
 
@@ -620,12 +615,11 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 				it_ack->second = false;
 			}
 			it_ack = m_ackInterClusterPropagation.find(key);
-
 			EventId eventId = Simulator::Schedule(sending_timeslot, &ClusterControlClient::SendTo, this, key, packet, (bool*)&(it_ack->second));
 			m_sendingInterClusterPropagationEvent.push_back(eventId);
-			sending_timeslot = sending_timeslot + Seconds(m_minimumTdmaSlot * 10);
+			sending_timeslot = sending_timeslot + Seconds(m_minimumTdmaSlot * 50);
 
-			std::cout << id <<"@"<< m_currentMobility.imsi << " to " << key << std::endl;
+			std::cout << id <<"@"<< m_currentMobility.imsi << " PROPAGATE TO " << key << " Inter cluster " << std::endl;
 
 			outcome_sum = outcome_sum + candidate_outcome;
 			outcome_num++;
@@ -639,6 +633,14 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 	if(m_clusterList.size() > 0){
 		ScheduleTransmit(sending_timeslot);
 		m_sendingInterClusterPropagationEvent.push_back(m_sendEvent);
+	}
+	// if CH is starting node
+	if(id == m_currentMobility.imsi)
+	{
+		m_currentMobility.isStartingNode = true;
+		m_propagationStartTime = m_firstPropagationStartingTime;
+		// Ready running
+		ScheduleInterNodePropagation();
 	}
 }
 
@@ -678,7 +680,7 @@ Time ClusterControlClient::CalcPropagationDelay(Vector source, Vector destinatio
 	double delta_horizontal = (a_*delta.x + b_*delta.y) / verocity; // dalta_horizontal
 	//double delta_vertical   = (c_*delta.x + d_*delta.y) /verocity;  // delta_vertical
 
-	Time delta_time = Seconds(delta_horizontal);
+	Time delta_time = Seconds(std::fabs(delta_horizontal));
 	// std::cout << "[DELAY]: " << delta_time.GetSeconds() << " sec" << std::endl;
 	return delta_time;
 }
@@ -741,7 +743,7 @@ void ClusterControlClient::ScheduleInterNodePropagation(void) {
 }
 
 void ClusterControlClient::StartNodePropagation(void) {
-	Time running_time = Seconds(1.0);
+	Time running_time = Seconds(1.5);
 	m_status = PROPAGATION_RUNNING;
 	std::cout << "StartProp Running  " << m_currentMobility.imsi << " @ " << Simulator::Now().GetSeconds() << "sec" << std::endl;
 	Send();
@@ -759,10 +761,11 @@ void ClusterControlClient::SendTo(uint64_t id, Ptr<Packet> packet, bool *ack)
 	if(ack == 0 || *ack == false){
 		if(it != m_neighborClustersSocket.end()){
 			Ptr<Socket> socket = it->second;
-			socket->Send(packet);
+			//socket->Send(packet);
+			MetaData::GetInstance().Call(id, packet);
 			if(ack != 0 && *ack == false){
-				//std::cout << "[RETRY] SendTo " << id << " from " << m_currentMobility.imsi << std::endl;
-				Simulator::Schedule(Seconds(m_minimumTdmaSlot * m_maxUes * 5), &ClusterControlClient::SendTo, this, id, packet, ack);
+				std::cout << "[RETRY] SendTo " << id << " from " << m_currentMobility.imsi << std::endl;
+				Simulator::Schedule(Seconds(m_minimumTdmaSlot * 1000), &ClusterControlClient::SendTo, this, id, packet, ack);
 			}
 		}
 	}
@@ -814,7 +817,7 @@ void ClusterControlClient::SetStartingNode(bool isStartingNode) {
 	m_currentMobility.isStartingNode = isStartingNode;
 }
 
-void ClusterControlClient::SetBasePropagationVector(Vector vector){
+void ClusterControlClient::SetBasePropagationDirection(Vector vector){
 	m_basePropagationDirection = vector;
 	MetaData::PropagationVectorMap *propMap = &MetaData::GetInstance().basePropagationVector;
 	MetaData::PropagationVectorMap::iterator it = propMap->find(GetNode()->GetId());
@@ -824,6 +827,10 @@ void ClusterControlClient::SetBasePropagationVector(Vector vector){
 	else{
 		it->second = vector;
 	}
+}
+
+const Vector ClusterControlClient::GetPropagationDirection(void) const {
+	return m_propagationDirection;
 }
 
 // Private Members
@@ -1169,12 +1176,23 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 
 				if(m_currentMobility.clusterId == clusterId && m_currentMobility.degree == ClusterSap::CM) {
 					m_propagationDirection = info.direction;
+					std::cout << "[IntraClusterPropagationHeader received " << m_currentMobility.imsi << "] " << std::endl;
 					if(m_currentMobility.imsi == info.startingNode &&
 							(m_status == EXCHANGE_DISTRO_MAP ||
 							m_status == PROPAGATION_READY)) {
-						if(m_propagationStartTime > info.startingTime &&
+						if(m_propagationStartTime >= info.startingTime &&
 								 info.startingTime > Simulator::Now()) {
+							if(m_propagationStartTime == Time::Max()){
+								std::cout << "[Starting Node " << m_currentMobility.imsi << "] Starting Time is " << info.startingTime.GetSeconds() << " sec (now:" << Simulator::Now().GetSeconds() << " sec)"
+										<< std::endl;
+							}
 							m_propagationStartTime = info.startingTime;
+							m_firstPropagationStartingTime = info.startingTime;
+						}
+						else {
+							std::cout << "Starting Time is rejected : " << info.startingTime.GetSeconds()
+									<< " sec > " << Simulator::Now().GetSeconds() << " sec or "
+									<< m_propagationStartTime.GetSeconds() << " sec" << std::endl;
 						}
 						m_currentMobility.isStartingNode = true;
 
@@ -1193,7 +1211,21 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 				if(IsInSector(info.position, m_currentMobility.position, info.direction, Constants::RANGE, Constants::PROPAGATION_THETA)) {
 					if(m_propagationDirection.x == 0 && m_propagationDirection.y == 0){
 						std::cout << "[WARN] Alternate direction setted " << m_currentMobility.imsi << "@" << m_currentMobility.clusterId << std::endl;
-						m_propagationDirection = info.direction;
+
+
+						double speed = std::sqrt(info.direction.x * info.direction.x + info.direction.y * info.direction.y);
+						Vector come_direction(info.direction.x / speed, info.direction.y / speed, 0.0);
+
+						Vector delta = m_currentMobility.position - info.position;
+						double delta_abs = std::sqrt(delta.x*delta.x + delta.y*delta.y);
+
+						Vector out_direction;
+						out_direction.x = (come_direction.x + delta.x / delta_abs);
+						out_direction.y = (come_direction.y + delta.y / delta_abs);
+						double out_abs =std::sqrt(out_direction.x*out_direction.x + out_direction.y*out_direction.y);
+
+						m_propagationDirection.x = speed * out_direction.x / out_abs;
+						m_propagationDirection.y = speed * out_direction.y / out_abs;
 					}
 					// Time delay = CalcPropagationDelay(info.position, m_currentMobility.position, m_propagationDirection);
 					double distance = CalculateDistance(info.position, m_currentMobility.position);
@@ -1234,110 +1266,115 @@ void ClusterControlClient::HandleReadInterCluster(Ptr<Socket> socket) {
 		if (packet->GetSize() == 0) { //EOF
 			break;
 		}
+		HandlePacketInterCluster(packet);
+	}
+}
 
-		PacketMetadata::ItemIterator metadataIterator = packet->BeginItem();
-		PacketMetadata::Item item;
+void ClusterControlClient::HandlePacketInterCluster(Ptr<Packet> packet) {
+	PacketMetadata::ItemIterator metadataIterator = packet->BeginItem();
+	PacketMetadata::Item item;
 
-		while (metadataIterator.HasNext()) {
-			++m_recvCounter;
-			item = metadataIterator.Next();
+	while (metadataIterator.HasNext()) {
+		++m_recvCounter;
+		item = metadataIterator.Next();
 
-			// DistroMapHeader
-			if (item.tid.GetName() == "ns3::DistroMapHeader") {
-				float otherDistroMap[Constants::DISTRO_MAP_SIZE * Constants::DISTRO_MAP_SIZE];
-				DistroMapHeader distroMapHeader;
-				packet->RemoveHeader(distroMapHeader);
-				uint64_t id = distroMapHeader.GetClusterId();
-				ClusterSap::NeighborInfo otherInfo = distroMapHeader.GetMobilityInfo();
-				distroMapHeader.GetDistroMap(otherDistroMap);
+		// DistroMapHeader
+		if (item.tid.GetName() == "ns3::DistroMapHeader") {
+			float otherDistroMap[Constants::DISTRO_MAP_SIZE * Constants::DISTRO_MAP_SIZE];
+			DistroMapHeader distroMapHeader;
+			packet->RemoveHeader(distroMapHeader);
+			uint64_t id = distroMapHeader.GetClusterId();
+			ClusterSap::NeighborInfo otherInfo = distroMapHeader.GetMobilityInfo();
+			distroMapHeader.GetDistroMap(otherDistroMap);
 
-				// convert distro map to vector
-				std::vector<float> otherDistroMapV =
-						std::vector<float>(otherDistroMap, otherDistroMap + (sizeof(otherDistroMap) / sizeof(otherDistroMap[0]) ));
+			// convert distro map to vector
+			std::vector<float> otherDistroMapV =
+					std::vector<float>(otherDistroMap, otherDistroMap + (sizeof(otherDistroMap) / sizeof(otherDistroMap[0]) ));
 
-				std::map<uint64_t, ClusterSap::NeighborInfo>::iterator itNC = m_neighborClusterList.find(id);
-				if (itNC == m_neighborClusterList.end()) {
-					m_neighborClusterList.insert(std::map<uint64_t, ClusterSap::NeighborInfo>::value_type(id, otherInfo));
-				} else {
-					itNC->second = otherInfo;
-				}
-
-				std::map<uint64_t, std::vector<float>>::iterator itND = m_neighborDistroMap.find(id);
-				if (itND == m_neighborDistroMap.end()) {
-					m_neighborDistroMap.insert(std::map<uint64_t, std::vector<float>>::value_type(id, otherDistroMapV));
-				}
-				else {
-					itND->second = otherDistroMapV;
-				}
-				std::cout << m_currentMobility.imsi << " receive distro map from " << id << std::endl;
-
-				// return ack
-				AckHeader ack;
-				ack.SetSeq(m_sentCounter);
-				ack.SetAckTypeId(DistroMapHeader::GetTypeId());
-				ack.SetClusterId(m_currentMobility.clusterId);
-
-				Ptr<Packet> packet = Create<Packet>(0);
-				++m_sentCounter;
-				packet->AddHeader(ack);
-				Simulator::Schedule(Seconds(.0), &ClusterControlClient::SendTo, this, id, packet, (bool*)0);
+			std::map<uint64_t, ClusterSap::NeighborInfo>::iterator itNC = m_neighborClusterList.find(id);
+			if (itNC == m_neighborClusterList.end()) {
+				m_neighborClusterList.insert(std::map<uint64_t, ClusterSap::NeighborInfo>::value_type(id, otherInfo));
+			} else {
+				itNC->second = otherInfo;
 			}
 
-			else if (item.tid.GetName() == "ns3::InterClusterPropagationHeader") {
-				InterClusterPropagationHeader header;
-				packet->RemoveHeader(header);
-				uint64_t clusterId = header.GetClusterId();
-				ClusterSap::InterClusterPropagationInfo info = header.GetInterClusterInfo();
+			std::map<uint64_t, std::vector<float>>::iterator itND = m_neighborDistroMap.find(id);
+			if (itND == m_neighborDistroMap.end()) {
+				m_neighborDistroMap.insert(std::map<uint64_t, std::vector<float>>::value_type(id, otherDistroMapV));
+			}
+			else {
+				itND->second = otherDistroMapV;
+			}
+			std::cout << m_currentMobility.imsi << " receive distro map from " << id << std::endl;
 
-				std::cout << "RECEIVE InterClusterPropagationHeader @ " << m_currentMobility.imsi << " from " << clusterId << std::endl;
+			// return ack
+			AckHeader ack;
+			ack.SetSeq(m_sentCounter);
+			ack.SetAckTypeId(DistroMapHeader::GetTypeId());
+			ack.SetClusterId(m_currentMobility.clusterId);
 
-				uint64_t candidateId = FindNodeByPosition(info.distination);
-				Vector candidatePos = m_clusterList.find(candidateId)->second.position;
-				Time delay = CalcPropagationDelay(info.source, candidatePos, info.direction);
-				Time newTime = (info.startingTime + delay) * 1.3;
+			Ptr<Packet> packet = Create<Packet>(0);
+			++m_sentCounter;
+			packet->AddHeader(ack);
+			Simulator::Schedule(Seconds(.0), &ClusterControlClient::SendTo, this, id, packet, (bool*)0);
+		}
 
-				if(m_firstPropagationStartingTime > (info.startingTime + delay) ) {
-					m_firstPropagationStartingTime = info.startingTime + delay;
-					m_firstPropagationStartNodeId = candidateId;
+		else if (item.tid.GetName() == "ns3::InterClusterPropagationHeader") {
+			InterClusterPropagationHeader header;
+			packet->RemoveHeader(header);
+			uint64_t clusterId = header.GetClusterId();
+			ClusterSap::InterClusterPropagationInfo info = header.GetInterClusterInfo();
 
-					TransmitPropagationDirection(candidateId, info.direction);
+			std::cout << "RECEIVE InterClusterPropagationHeader @ " << m_currentMobility.imsi << " from " << clusterId << std::endl;
 
-//					std::cout << "[TIMING] starting node:" << candidateId << ", cluster:" << m_currentMobility.imsi
-//							<< " time:" << (info.startingTime + delay).GetSeconds() << " sec" << std::endl;
-				}
+			uint64_t candidateId = FindNodeByPosition(info.distination);
+			Vector candidatePos;
+			if(candidateId == m_currentMobility.imsi) {
+				candidatePos = m_currentMobility.position;
+			}
+			else {
+				candidatePos = m_clusterList.find(candidateId)->second.position;
+			}
+			Time delay = CalcPropagationDelay(info.source, candidatePos, info.direction);
+			Time newTime = info.startingTime + (delay * 1.3);
 
-				// return ack
-				AckHeader ack;
-				ack.SetSeq(m_sentCounter);
-				ack.SetAckTypeId(InterClusterPropagationHeader::GetTypeId());
-				ack.SetClusterId(m_currentMobility.clusterId);
-
-				Ptr<Packet> packet = Create<Packet>(0);
-				++m_sentCounter;
-				packet->AddHeader(ack);
-				Simulator::Schedule(Seconds(.0), &ClusterControlClient::SendTo, this, clusterId, packet, (bool*)0);
+			if(m_firstPropagationStartingTime > newTime ) {
+				m_firstPropagationStartingTime = newTime;
+				m_firstPropagationStartNodeId = candidateId;
+				std::cout << "TRANSMIT PROPAGATION HEADER " << Simulator::Now().GetSeconds() << std::endl;
+				std::cout << "Prev: " << info.startingTime.GetSeconds()
+						<< ", Delay: " << delay.GetSeconds()
+						<< ", New Time: " << newTime.GetSeconds()
+						<< std::endl;
+				TransmitPropagationDirection(candidateId, info.direction);
 			}
 
-			// AckHeader
-			else if (item.tid.GetName() == "ns3::AckHeader") {
-				AckHeader ackHeader;
-				packet->RemoveHeader(ackHeader);
-				uint64_t clusterId = ackHeader.GetClusterId();
-				TypeId ackId = ackHeader.GetAckTypeId();
+			// return ack
+			AckHeader ack;
+			ack.SetSeq(m_sentCounter);
+			ack.SetAckTypeId(InterClusterPropagationHeader::GetTypeId());
+			ack.SetClusterId(m_currentMobility.clusterId);
 
-//				std::cout << "[" << m_currentMobility.imsi << "] receive ack about "
-//						<< ackId.GetName() << " from " << clusterId << " @ "
-//						<< Simulator::Now().GetSeconds() << std::endl;
+			Ptr<Packet> packet = Create<Packet>(0);
+			++m_sentCounter;
+			packet->AddHeader(ack);
+			Simulator::Schedule(Seconds(.0), &ClusterControlClient::SendTo, this, clusterId, packet, (bool*)0);
+		}
 
-				if(ackId.GetName() == "ns3::DistroMapHeader"){
-					m_ackDistroMap.find(clusterId)->second = true;
-				}
+		// AckHeader
+		else if (item.tid.GetName() == "ns3::AckHeader") {
+			AckHeader ackHeader;
+			packet->RemoveHeader(ackHeader);
+			uint64_t clusterId = ackHeader.GetClusterId();
+			TypeId ackId = ackHeader.GetAckTypeId();
 
-				if(ackId.GetName() == "ns3::InterClusterPropagationHeader"){
-					m_ackInterClusterPropagation.find(clusterId)->second = true;
-				}
+			if(ackId.GetName() == "ns3::DistroMapHeader") {
+				m_ackDistroMap.find(clusterId)->second = true;
 			}
 
+			if(ackId.GetName() == "ns3::InterClusterPropagationHeader") {
+				m_ackInterClusterPropagation.find(clusterId)->second = true;
+			}
 		}
 	}
 }
