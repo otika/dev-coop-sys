@@ -43,11 +43,16 @@ public:
 	struct Constants
 	{
 		// Constant
-		constexpr static const double RANGE = 5;	// Communication Range inner Cluster
+		constexpr static const double OMNI_RANGE = 5.0;	// Communication Range of Omni Anntenna
+		constexpr static const double BF_RANGE = 3.5; // Communication Range of BeamForming Anntenna
+//		constexpr static const double BF_RANGE = 5.0; // Communication Range of BeamForming Anntenna // reverse
 		constexpr static const int DISTRO_MAP_SIZE = 11; // must be bigger than RANGE
 		constexpr static const int DISTRO_MAP_SCALE = 1.0;
-		constexpr static const double PROPAGATION_THETA = M_PI;
+		constexpr static const double PROPAGATION_THETA = M_PI*15/16;
+		constexpr static const bool REVERSE_PROPAGATION = false;
 	};
+
+	static bool DISABLE_STARTINGNODE;
 
 	enum NodeStatus{
         CLUSTER_INITIALIZATION = 0,
@@ -59,6 +64,7 @@ public:
 		PROPAGATION_READY,
 		PROPAGATION_RUNNING,
 		PROPAGATION_COMPLETE,
+		ACTIVE,
         CLUSTER_STATES
 	};
 
@@ -149,6 +155,8 @@ private:
     void ScheduleInterNodePropagation();
     void StartNodePropagation();
     void StopNodePropagation();
+    void ActivateNode();
+    void InactivateNode();
 
     void SendTo(uint64_t id, Ptr<Packet> packet, bool *ack = 0);
 

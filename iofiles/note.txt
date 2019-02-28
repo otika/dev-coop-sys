@@ -1,0 +1,1 @@
+propagation_complete: 78 total: 90 rate: 0.866667

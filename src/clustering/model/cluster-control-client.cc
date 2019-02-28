@@ -56,9 +56,12 @@
 
 namespace ns3 {
 
+bool ClusterControlClient::DISABLE_STARTINGNODE;
+
 static const std::string ClusterStatusName[ClusterControlClient::CLUSTER_STATES] =
 		{ "CLUSTER_INITIALIZATION", "CLUSTER_HEAD_ELECTION",
-				"CLUSTER_FORMATION", "CLUSTER_UPDATE", "EXCHANGE_DISTRO_MAP" };
+				"CLUSTER_FORMATION", "CLUSTER_UPDATE", "EXCHANGE_DISTRO_MAP", "DECIDE_PROPAGATION_PARAM",
+				"PROPAGATION_READY", "PROPAGATION_RUNNING", "PROPAGATION_COMPLETE" };
 
 static const std::string & ToString(ClusterControlClient::NodeStatus status) {
 	return ClusterStatusName[status];
@@ -169,8 +172,8 @@ ClusterControlClient::ClusterControlClient() {
 
 ClusterControlClient::~ClusterControlClient() {
 	NS_LOG_FUNCTION(this);
-
-	if(m_currentMobility.degree == ClusterSap::CH || true){
+	if(m_currentMobility.isStartingNode) std::cout << "starting_node:" << m_currentMobility.imsi << std::endl;
+	if(m_currentMobility.degree == ClusterSap::CH && false){
 		std::cout << "[" << m_currentMobility.imsi << "] " << ToString(m_currentMobility.degree) << ", "
 				<< m_currentMobility.clusterId << ", " << ToString(m_status)
 				<< ", sent:" << m_sentCounter << " times, recv:" << m_recvCounter
@@ -183,7 +186,7 @@ ClusterControlClient::~ClusterControlClient() {
 		}
 		std::cout << std::endl;
 
-		if(m_currentMobility.degree == ClusterSap::CH){
+		if(m_currentMobility.degree == ClusterSap::CH || m_currentMobility.degree == ClusterSap::STANDALONE){
 			std::cout << "neighbor cluster list" << std::endl;
 			for (std::map<uint64_t, ClusterSap::NeighborInfo>::iterator it =
 					m_neighborClusterList.begin(); it != m_neighborClusterList.end(); ++it) {
@@ -262,7 +265,11 @@ void
 ClusterControlClient::DoInitialize (void)
 {
 	Application::DoInitialize();
-	m_clusteringStartEvent = Simulator::Schedule (m_clusteringStartTime, &ClusterControlClient::StartClustering, this);
+	AcquireMobilityInfo();
+	if (m_clusteringStartTime != TimeStep (0))
+    {
+		m_clusteringStartEvent = Simulator::Schedule (m_clusteringStartTime, &ClusterControlClient::StartClustering, this);
+    }
 	if (m_clusteringStopTime != TimeStep (0))
     {
       m_clusteringStopEvent = Simulator::Schedule (m_clusteringStopTime, &ClusterControlClient::StopClustering, this);
@@ -404,6 +411,7 @@ void ClusterControlClient::StartClustering(void) {
 
 void ClusterControlClient::StopClustering(void) {
 	Simulator::Cancel(m_neighborsListUpdateEvent);
+	AcquireMobilityInfo();
 	m_status = EXCHANGE_DISTRO_MAP;
 	if(m_currentMobility.degree == ClusterSap::CH){
 		ConnectSocketInterCH();
@@ -412,12 +420,19 @@ void ClusterControlClient::StopClustering(void) {
 
 		Simulator::Schedule(Seconds(1.0), &ClusterControlClient::DecidePropagationParam, this);
 	}
+	else if(m_currentMobility.degree == ClusterSap::STANDALONE && m_currentMobility.isStartingNode){
+		Time delay = Seconds(5.0);
+		m_firstPropagationStartingTime = Simulator::Now() + delay;
+		m_propagationStartTime = m_firstPropagationStartingTime;
+		m_propagationDirection = m_basePropagationDirection;
+		ScheduleInterNodePropagation();
+	}
 }
 
 void ClusterControlClient::ExchangeDistroMap (void){
 	m_status = EXCHANGE_DISTRO_MAP;
 
-	std::cout << "ExchangeDistroMap " << m_currentMobility.imsi << " @ " << Simulator::Now().GetSeconds() << " sec" << std::endl;
+	//std::cout << "ExchangeDistroMap " << m_currentMobility.imsi << " @ " << Simulator::Now().GetSeconds() << " sec" << std::endl;
 
 	double time = 0;
 	for (std::map<uint64_t, Ptr<Socket>>::iterator itSearch = m_neighborClustersSocket.begin(); itSearch != m_neighborClustersSocket.end(); ++itSearch) {
@@ -449,12 +464,12 @@ void ClusterControlClient::ExchangeDistroMap (void){
 }
 
 void ClusterControlClient::DecidePropagationParam(void){
-	std::cout << "DecidePropagationParam [" << m_currentMobility.imsi << "] " << std::endl;
+	// std::cout << "DecidePropagationParam [" << m_currentMobility.imsi << "] " << std::endl;
 	m_status = DECIDE_PROPAGATION_PARAM;
 	// Stop Exchange DistroMap
 	for (std::map<uint64_t, bool>::iterator it =
 				m_ackDistroMap.begin(); it != m_ackDistroMap.end(); ++it) {
-		if(it->second == false){
+		if(it->second == false) {
 			it->second = true;
 		}
 	}
@@ -521,7 +536,7 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 			itEvent->Cancel();
 		}
 		else{
-			std::cout << "duplicated" << std::endl;
+			//std::cout << "duplicated" << std::endl;
 		}
 	}
 
@@ -538,7 +553,7 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 		startingPosition = m_currentMobility.position;
 	}
 	else{
-		std::cout << "Error!!" << std::endl;
+		//std::cout << "Error!!" << std::endl;
 		return;
 	}
 
@@ -560,7 +575,7 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 			basePosition = itCl->second.position;
 		}
 		else{
-			std::cout << "Error!!!" << std::endl; continue;
+			//std::cout << "Error!!!" << std::endl; continue;
 		}
 
 		Vector candidate_pos(0, 0, 0);
@@ -619,7 +634,7 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 			m_sendingInterClusterPropagationEvent.push_back(eventId);
 			sending_timeslot = sending_timeslot + Seconds(m_minimumTdmaSlot * 50);
 
-			std::cout << id <<"@"<< m_currentMobility.imsi << " PROPAGATE TO " << key << " Inter cluster " << std::endl;
+			//std::cout << id <<"@"<< m_currentMobility.imsi << " PROPAGATE TO " << key << " Inter cluster " << std::endl;
 
 			outcome_sum = outcome_sum + candidate_outcome;
 			outcome_num++;
@@ -635,9 +650,9 @@ void ClusterControlClient::TransmitPropagationDirection(uint64_t id, Vector prop
 		m_sendingInterClusterPropagationEvent.push_back(m_sendEvent);
 	}
 	// if CH is starting node
-	if(id == m_currentMobility.imsi)
+	if(id == m_currentMobility.imsi && (!DISABLE_STARTINGNODE || m_currentMobility.isStartingNode))
 	{
-		m_currentMobility.isStartingNode = true;
+		// m_currentMobility.isStartingNode = true;
 		m_propagationStartTime = m_firstPropagationStartingTime;
 		// Ready running
 		ScheduleInterNodePropagation();
@@ -729,30 +744,65 @@ bool ClusterControlClient::IsInSector(Vector source, Vector destination, Vector 
 void ClusterControlClient::ScheduleInterNodePropagation(void) {
 	m_status = PROPAGATION_READY;
 	if (Simulator::Now() > m_propagationStartTime) {
-//		std::cout << "it is past scheduling time " << m_currentMobility.imsi
-//				<< " @ " << (m_propagationStartingTime - Simulator::Now()).GetSeconds() << "sec" << std::endl;
 		return;
 	}
 	else {
 		if(m_interNodePropagationEvent.IsRunning()) {
 			m_interNodePropagationEvent.Cancel();
 		}
-		std::cout << "StartProp Scheduled" << m_currentMobility.imsi << " @ " << m_propagationStartTime.GetSeconds() << "sec" << std::endl;
-		m_interNodePropagationEvent = Simulator::Schedule(m_propagationStartTime - Simulator::Now(), &ClusterControlClient::StartNodePropagation, this);
+		// std::cout << "StartProp Scheduled" << m_currentMobility.imsi << " @ " << m_propagationStartTime.GetSeconds() << "sec" << std::endl;
+
+		if(!Constants::REVERSE_PROPAGATION)
+		{
+			m_interNodePropagationEvent = Simulator::Schedule(m_propagationStartTime - Simulator::Now(), &ClusterControlClient::StartNodePropagation, this);
+		}
+		else
+		{
+			m_interNodePropagationEvent = Simulator::Schedule(Seconds(0.1), &ClusterControlClient::StartNodePropagation, this); // reverse
+		}
 	}
 }
 
 void ClusterControlClient::StartNodePropagation(void) {
 	Time running_time = Seconds(1.5);
 	m_status = PROPAGATION_RUNNING;
-	std::cout << "StartProp Running  " << m_currentMobility.imsi << " @ " << Simulator::Now().GetSeconds() << "sec" << std::endl;
+	// std::cout << "StartProp Running  " << m_currentMobility.imsi << " @ " << Simulator::Now().GetSeconds() << "sec" << std::endl;
+	// std::cout << "direction:" << m_propagationDirection << std::endl;
+
 	Send();
-	Simulator::Schedule(running_time, &ClusterControlClient::StopNodePropagation, this);
+
+	if(!Constants::REVERSE_PROPAGATION)
+	{
+		Simulator::Schedule(running_time, &ClusterControlClient::StopNodePropagation, this);
+	}
+	else
+	{
+		// reverse
+		Time reversedTime = Now() - m_propagationStartTime;
+		while(reversedTime < 0){
+			reversedTime += Seconds(20.0);
+		}
+		reversedTime += Seconds(3.0); // offset
+		std::cout << m_currentMobility.imsi << " <- " << reversedTime.GetSeconds() << "sec" << std::endl;
+		Simulator::Schedule(reversedTime, &ClusterControlClient::ActivateNode, this);
+	}
 }
 
 void ClusterControlClient::StopNodePropagation(void) {
 	m_status = PROPAGATION_COMPLETE;
-	std::cout << "[" << m_currentMobility.imsi << "] Finite!" << std::endl;
+	// std::cout << "[" << m_currentMobility.imsi << "] Finite!" << std::endl;
+}
+
+void ClusterControlClient::ActivateNode(){
+	Time running_time = Seconds(1.0);
+	m_status = ACTIVE;
+	m_interNodePropagationEvent = Simulator::Schedule(running_time, &ClusterControlClient::InactivateNode, this);
+}
+
+void ClusterControlClient::InactivateNode(){
+	Time running_time = Seconds(19.0);
+	m_status = PROPAGATION_COMPLETE;
+	m_interNodePropagationEvent = Simulator::Schedule(running_time, &ClusterControlClient::ActivateNode, this);
 }
 
 void ClusterControlClient::SendTo(uint64_t id, Ptr<Packet> packet, bool *ack)
@@ -761,10 +811,10 @@ void ClusterControlClient::SendTo(uint64_t id, Ptr<Packet> packet, bool *ack)
 	if(ack == 0 || *ack == false){
 		if(it != m_neighborClustersSocket.end()){
 			Ptr<Socket> socket = it->second;
-			//socket->Send(packet);
+			// socket->Send(packet);
 			MetaData::GetInstance().Call(id, packet);
 			if(ack != 0 && *ack == false){
-				std::cout << "[RETRY] SendTo " << id << " from " << m_currentMobility.imsi << std::endl;
+//				std::cout << "[RETRY] SendTo " << id << " from " << m_currentMobility.imsi << std::endl;
 				Simulator::Schedule(Seconds(m_minimumTdmaSlot * 1000), &ClusterControlClient::SendTo, this, id, packet, ack);
 			}
 		}
@@ -871,7 +921,7 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 				double dz = v1.z - v2.z;
 				double range = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
 
-				if (range >= Constants::RANGE){
+				if (range >= Constants::OMNI_RANGE){
 					continue;
 				}
 				if (it2r == m_neighborList.end()) {
@@ -983,7 +1033,6 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 
 				if (m_status == ClusterControlClient::CLUSTER_INITIALIZATION ) {
 					m_status = ClusterControlClient::CLUSTER_HEAD_ELECTION;
-
 					// Range check
 					Vector v1 = m_currentMobility.position;
 					Vector v2 = chInfo.position;
@@ -992,7 +1041,7 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 					double dz = v1.z - v2.z;
 					double range = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
 
-					if (range >= Constants::RANGE){
+					if (range >= Constants::OMNI_RANGE){
 						continue;
 					}
 
@@ -1013,7 +1062,8 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 						/// Not in 2rStableList
 						m_status = ClusterControlClient::CLUSTER_INITIALIZATION;
 					}
-				} else {
+				}
+				else {
 					//!< Process only the first request and ignore the rest
 					NS_LOG_DEBUG("[HandleRead] => NodeId: " << m_currentMobility.imsi << " Ignore further requests for CH suitability...");
 				}
@@ -1057,7 +1107,7 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 				double dz = v1.z - v2.z;
 				double range = std::sqrt((dx * dx) + (dy * dy) + (dz * dz));
 
-				if (range >= Constants::RANGE){
+				if (range >= Constants::OMNI_RANGE){
 					continue;
 				}
 
@@ -1176,28 +1226,32 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 
 				if(m_currentMobility.clusterId == clusterId && m_currentMobility.degree == ClusterSap::CM) {
 					m_propagationDirection = info.direction;
-					std::cout << "[IntraClusterPropagationHeader received " << m_currentMobility.imsi << "] " << std::endl;
+					// std::cout << "[IntraClusterPropagationHeader received " << m_currentMobility.imsi << "] " << std::endl;
 					if(m_currentMobility.imsi == info.startingNode &&
+							(!DISABLE_STARTINGNODE || m_currentMobility.isStartingNode) &&
 							(m_status == EXCHANGE_DISTRO_MAP ||
 							m_status == PROPAGATION_READY)) {
 						if(m_propagationStartTime >= info.startingTime &&
 								 info.startingTime > Simulator::Now()) {
 							if(m_propagationStartTime == Time::Max()){
-								std::cout << "[Starting Node " << m_currentMobility.imsi << "] Starting Time is " << info.startingTime.GetSeconds() << " sec (now:" << Simulator::Now().GetSeconds() << " sec)"
-										<< std::endl;
+								// std::cout << "[Starting Node " << m_currentMobility.imsi << "] Starting Time is " << info.startingTime.GetSeconds() << " sec (now:" << Simulator::Now().GetSeconds() << " sec)" << std::endl;
 							}
 							m_propagationStartTime = info.startingTime;
 							m_firstPropagationStartingTime = info.startingTime;
 						}
 						else {
-							std::cout << "Starting Time is rejected : " << info.startingTime.GetSeconds()
-									<< " sec > " << Simulator::Now().GetSeconds() << " sec or "
-									<< m_propagationStartTime.GetSeconds() << " sec" << std::endl;
+//							std::cout << "Starting Time is rejected : " << info.startingTime.GetSeconds()
+//									<< " sec > " << Simulator::Now().GetSeconds() << " sec or "
+//									<< m_propagationStartTime.GetSeconds() << " sec" << std::endl;
 						}
-						m_currentMobility.isStartingNode = true;
+						// m_currentMobility.isStartingNode = true;
 
 						// Ready running
+						std::cout << "schedule accepted@" << m_currentMobility.imsi << std::endl;
 						ScheduleInterNodePropagation();
+					}
+					else{
+						//std::cout << "schedule rejected@" << m_currentMobility.imsi << std::endl;
 					}
 				}
 			}
@@ -1208,10 +1262,10 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 
 				ClusterSap::InterNodePropagationInfo info = header.GetInterNodeInfo();
 				uint64_t clusterId = header.GetClusterId();
-				if(IsInSector(info.position, m_currentMobility.position, info.direction, Constants::RANGE, Constants::PROPAGATION_THETA)) {
-					if(m_propagationDirection.x == 0 && m_propagationDirection.y == 0){
-						std::cout << "[WARN] Alternate direction setted " << m_currentMobility.imsi << "@" << m_currentMobility.clusterId << std::endl;
 
+				if(IsInSector(info.position, m_currentMobility.position, info.direction, Constants::BF_RANGE, Constants::PROPAGATION_THETA)) {
+					if(m_propagationDirection.x == 0 && m_propagationDirection.y == 0){
+						// std::cout << "[WARN] Alternate direction setted " << m_currentMobility.imsi << "@" << m_currentMobility.clusterId << std::endl;
 
 						double speed = std::sqrt(info.direction.x * info.direction.x + info.direction.y * info.direction.y);
 						Vector come_direction(info.direction.x / speed, info.direction.y / speed, 0.0);
@@ -1236,6 +1290,10 @@ void ClusterControlClient::HandleRead(Ptr<Socket> socket) {
 							Simulator::Now() < m_propagationStartTime){
 						m_propagationStartTime = newTime;
 						ScheduleInterNodePropagation();
+						//std::cout << "recv " << m_currentMobility.imsi << std::endl;
+					}
+					else{
+						//std::cout << "reject " << m_currentMobility.imsi << std::endl;
 					}
 				}
 			}
@@ -1305,7 +1363,7 @@ void ClusterControlClient::HandlePacketInterCluster(Ptr<Packet> packet) {
 			else {
 				itND->second = otherDistroMapV;
 			}
-			std::cout << m_currentMobility.imsi << " receive distro map from " << id << std::endl;
+//			std::cout << m_currentMobility.imsi << " receive distro map from " << id << std::endl;
 
 			// return ack
 			AckHeader ack;
@@ -1325,7 +1383,7 @@ void ClusterControlClient::HandlePacketInterCluster(Ptr<Packet> packet) {
 			uint64_t clusterId = header.GetClusterId();
 			ClusterSap::InterClusterPropagationInfo info = header.GetInterClusterInfo();
 
-			std::cout << "RECEIVE InterClusterPropagationHeader @ " << m_currentMobility.imsi << " from " << clusterId << std::endl;
+//			std::cout << "RECEIVE InterClusterPropagationHeader @ " << m_currentMobility.imsi << " from " << clusterId << std::endl;
 
 			uint64_t candidateId = FindNodeByPosition(info.distination);
 			Vector candidatePos;
@@ -1336,16 +1394,21 @@ void ClusterControlClient::HandlePacketInterCluster(Ptr<Packet> packet) {
 				candidatePos = m_clusterList.find(candidateId)->second.position;
 			}
 			Time delay = CalcPropagationDelay(info.source, candidatePos, info.direction);
-			Time newTime = info.startingTime + (delay * 1.3);
-
-			if(m_firstPropagationStartingTime > newTime ) {
+			Time newTime;
+//			if(!ClusterControlClient::DISABLE_STARTINGNODE){
+				 newTime = info.startingTime + (delay * 1.3);
+//			}
+//			else{
+//				newTime = Time::Max(); // Disable StartingNode
+//			}
+			if(m_firstPropagationStartingTime > newTime) {
 				m_firstPropagationStartingTime = newTime;
 				m_firstPropagationStartNodeId = candidateId;
-				std::cout << "TRANSMIT PROPAGATION HEADER " << Simulator::Now().GetSeconds() << std::endl;
-				std::cout << "Prev: " << info.startingTime.GetSeconds()
-						<< ", Delay: " << delay.GetSeconds()
-						<< ", New Time: " << newTime.GetSeconds()
-						<< std::endl;
+//				std::cout << "TRANSMIT PROPAGATION HEADER " << Simulator::Now().GetSeconds() << std::endl;
+//				std::cout << "Prev: " << info.startingTime.GetSeconds()
+//						<< ", Delay: " << delay.GetSeconds()
+//						<< ", New Time: " << newTime.GetSeconds()
+//						<< std::endl;
 				TransmitPropagationDirection(candidateId, info.direction);
 			}
 
@@ -1469,11 +1532,11 @@ void ClusterControlClient::UpdateDistroMap(void){
 		Vector position = value.position;
 		std::array<float, 2> ar_pos = {(float)(position.x - ch_pos.x), (float)(position.y - ch_pos.y)};
 		data.push_back(ar_pos);
-		std::cout << key << ", " ;
+//		std::cout << key << ", " ;
 	}
-	std::cout << std::endl;
+//	std::cout << std::endl;
 
-	std::cout << "distromap of " << m_currentMobility.imsi << std::endl << std::fixed;
+//	std::cout << "distromap of " << m_currentMobility.imsi << std::endl << std::fixed;
 	if(data.size() > 1){
 		std::array<float, 4> bandwidth = {0.1, 0.0, 0.0, 0.1};
 		kdepp::Kde2d<std::array<float,2>> kernel(data, bandwidth);
@@ -1484,11 +1547,11 @@ void ClusterControlClient::UpdateDistroMap(void){
 				std::array<float, 2> sample_point = {Constants::DISTRO_MAP_SCALE * j - offset, Constants::DISTRO_MAP_SCALE * i - offset};
 
 				m_distroMap[Constants::DISTRO_MAP_SIZE * i + j] = kernel.eval(sample_point);
-				std::cout << std::setprecision(5) << m_distroMap[Constants::DISTRO_MAP_SIZE * i + j] <<", ";
+//				std::cout << std::setprecision(5) << m_distroMap[Constants::DISTRO_MAP_SIZE * i + j] <<", ";
 			}
-			std::cout << std::endl;
+//			std::cout << std::endl;
 		}
-		std::cout << std::endl;
+//		std::cout << std::endl;
 	}
 	else{
 		for(int i = 0; i < Constants::DISTRO_MAP_SIZE; i++){
@@ -1519,11 +1582,11 @@ void ClusterControlClient::UpdateDistroMap(void){
 	MetaData::ChInfoMap *chInfo = &MetaData::GetInstance().chInfo;
 	MetaData::ChInfoMap::iterator itChInfo = chInfo->find(m_currentMobility.imsi);
 	if(itChInfo == chInfo->end()){
-		std::cout << "[" << m_currentMobility.imsi << "] Register ChInfo" << std::endl;
+//		std::cout << "[" << m_currentMobility.imsi << "] Register ChInfo" << std::endl;
 		chInfo->insert(MetaData::ChInfoMap::value_type(m_currentMobility.imsi, m_currentMobility));
 	}
 	else{
-		std::cout << "[" << m_currentMobility.imsi << "] Update ChInfo" << std::endl;
+//		std::cout << "[" << m_currentMobility.imsi << "] Update ChInfo" << std::endl;
 		itChInfo->second = m_currentMobility;
 	}
 
@@ -1645,7 +1708,7 @@ void ClusterControlClient::Send(void) {
 		packet->AddHeader(initiateCluster);
 		m_txTrace(packet);
 		if(PeekPointer(m_socket) <= 0) {
-			std::cout << m_currentMobility.imsi << " socket missing " << std::endl;
+//			std::cout << m_currentMobility.imsi << " socket missing " << std::endl;
 		}
 		m_socket->Send(packet);
 		++m_sentCounter;
@@ -1792,8 +1855,8 @@ void ClusterControlClient::InitiateCluster(void) {
 			if (HasMaxId()) {
 				// retry
 #ifdef CLUSTER_CONTROL_CLIENT_DEBUG
-				std::cout << "Initiating from " << m_currentMobility.imsi << " ...";
-				std::cout << " become CH? " << ToString(m_status) << std::endl;
+				 << "Initiating from " << m_currentMobility.imsi << " ...";
+				 << " become CH? " << ToString(m_status) << std::endl;
 #endif
 				m_status = ClusterControlClient::CLUSTER_HEAD_ELECTION;
 				ScheduleTransmit(Seconds(m_minimumTdmaSlot * m_maxUes));
@@ -1823,41 +1886,41 @@ bool ClusterControlClient::HasMaxId(void) {
 
 void ClusterControlClient::ConnectionSucceeded(Ptr<Socket> socket) {
 	NS_LOG_FUNCTION(this << socket);
-	std::cout << "connection Succeeded " << m_currentMobility.imsi << " to ";
+//	std::cout << "connection Succeeded " << m_currentMobility.imsi << " to ";
 	for (std::map<uint64_t, Ptr<Socket>>::iterator it = m_neighborClustersSocket.begin(); it != m_neighborClustersSocket.end(); ++it )
 	{
 		if (it->second == socket){
-			std::cout << it->first;
+//			std::cout << it->first;
 		}
 	}
-	std::cout << std::endl;
+//	std::cout << std::endl;
 }
 
 void ClusterControlClient::ConnectionFailed(Ptr<Socket> socket) {
 	NS_LOG_FUNCTION(this << socket);
-	std::cout << "connection Failed" << std::endl;
+//	std::cout << "connection Failed" << std::endl;
 }
 
 void ClusterControlClient::ConnectionClosed(Ptr<Socket> socket) {
-	std::cout << "connection Closed " << m_currentMobility.imsi << " to ";
+//	std::cout << "connection Closed " << m_currentMobility.imsi << " to ";
 	for (std::map<uint64_t, Ptr<Socket>>::iterator it = m_neighborClustersSocket.begin(); it != m_neighborClustersSocket.end(); ++it )
 	{
 		if (it->second == socket){
-			std::cout << it->first;
+//			std::cout << it->first;
 		}
 	}
-	std::cout << std::endl;
+//	std::cout << std::endl;
 }
 
 void ClusterControlClient::ConnectionClosedWithError(Ptr<Socket> socket) {
-	std::cout << "connection Closed with error " << m_currentMobility.imsi << " to ";
+//	std::cout << "connection Closed with error " << m_currentMobility.imsi << " to ";
 	for (std::map<uint64_t, Ptr<Socket>>::iterator it = m_neighborClustersSocket.begin(); it != m_neighborClustersSocket.end(); ++it )
 	{
 		if (it->second == socket){
-			std::cout << it->first;
+//			std::cout << it->first;
 		}
 	}
-	std::cout << " errno: " << socket->GetErrno() << std::endl;
+//	std::cout << " errno: " << socket->GetErrno() << std::endl;
 }
 
 
@@ -1906,7 +1969,7 @@ void ClusterControlClient::UpdateNeighborList(void) {
 				NS_LOG_DEBUG(
 						"[UpdateNeighborList] => Go to STANDALONE state: " << m_currentMobility.imsi);
 				m_status = ClusterControlClient::CLUSTER_INITIALIZATION;
-				std::cout << "[" << m_currentMobility.imsi << "]  Initialization Prosessing " << (double)value.ts.GetSeconds() << std::endl;
+//				std::cout << "[" << m_currentMobility.imsi << "]  Initialization Prosessing " << (double)value.ts.GetSeconds() << std::endl;
 			}
 
 			if (m_neighborList.find(key) != m_neighborList.end()) {

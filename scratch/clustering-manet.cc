@@ -38,7 +38,7 @@
 #include "ns3/cluster-control-client-helper.h"
 #include "ns3/cluster-sap.h"
 
- #include "ns3/netanim-module.h"
+#include "ns3/netanim-module.h"
 
 #include <iostream>
 #include <fstream>
@@ -49,7 +49,7 @@
 #define SIMULATION_TIME_FORMAT(s) Seconds(s)
 
 #define STD_NODE_SIZE 0.1
-#define WIFI_POWER -22 // -24
+#define WIFI_POWER -18 // -24
 
 using namespace ns3;
 NS_LOG_COMPONENT_DEFINE("ClusteringExample");
@@ -57,15 +57,21 @@ NS_LOG_COMPONENT_DEFINE("ClusteringExample");
 AnimationInterface *pAnim = 0;
 NodeContainer nodes_copy;
 
-char arrange_file[] = "/media/sf_WaveVisualizer/result/round-big/arrange.txt";
-char render_file[]  = "/media/sf_WaveVisualizer/result/round-big/render.txt";
-//char render_file[] = "scratch/render.txt";
+const std::string dir = "./iofiles/";
+const std::string arrange_file = dir + "arrange.txt";
+const std::string render_file  = dir + "render.txt";
+const std::string note_file = dir + "note.txt";
+// char render_file[] = "scratch/render.txt";
 std::ofstream outputfile(render_file);
+std::ofstream notefile(note_file);
+
+int seed = 0;
+
+const bool CLUSTERING_DISABLE = false;
 
 struct Rgb {
     uint8_t r, g, b;
 };
-
 
 template<class T> void shuffle(T ary[],int size);
 Rgb getColor(int id);
@@ -95,10 +101,12 @@ int main(int argc, char *argv[]) {
     std::ifstream ifs(arrange_file);
     std::vector<Vector> position_list = load_arrange(ifs);
 
-    std::cout << "Loaded " << position_list.size() << " positions" << std::endl;
+    // std::cout << "Loaded " << position_list.size() << " positions" << std::endl;
 
     uint16_t numberOfMaxUes = position_list.size();
-    uint16_t numberOfUes = 700;
+    // uint16_t numberOfUes = 223; // sparse
+    // uint16_t numberOfUes = 669;
+    uint16_t numberOfUes = 892;
 
     if (numberOfMaxUes < numberOfUes){
     	std::cout << "numberOfUes is too large" << std::endl;
@@ -106,13 +114,16 @@ int main(int argc, char *argv[]) {
     }
 
     int column = 10;
-    double distance = 1.0;
+//    double distance = 1.0;
+    double distance = 1.0; // reverse
 
     double minimumTdmaSlot = 0.001;         /// Time difference between 2 transmissions
     double clusterTimeMetric = 5.0;         /// Clustering Time Metric for Waiting Time calculation
     double incidentWindow = 40.0;
 
-    double simTime = 120.0;
+    double simTime = 100.0;
+
+    int disableStartingNode = 0;
 
     /*-------------------- Set explicitly default values -------------------*/
 //    Config::SetDefault ("ns3::WifiRemoteStationManager::FragmentationThreshold",
@@ -128,6 +139,8 @@ int main(int argc, char *argv[]) {
     CommandLine cmd;
     cmd.AddValue("ueNumber", "Number of UE", numberOfUes);
     cmd.AddValue("simTime", "Simulation Time in Seconds", simTime);
+    cmd.AddValue("seed", "Seed of random number generator", seed);
+    cmd.AddValue("disableStartingNode", "disable starting node in each cluster", disableStartingNode);
     cmd.Parse (argc, argv);
 
     NS_LOG_INFO("");
@@ -224,6 +237,7 @@ int main(int argc, char *argv[]) {
         Ptr<ConstantPositionMobilityModel> mobilityModel = nodes.Get(u)->GetObject<ConstantPositionMobilityModel>();
 
         // クラスタリング機能
+        ClusterControlClient::DISABLE_STARTINGNODE = (disableStartingNode > 0);
         ClusterControlClientHelper ueClient(
         		"ns3::UdpSocketFactory",
         		Address(InetSocketAddress(Ipv4Address::GetBroadcast(), controlPort)),
@@ -238,12 +252,24 @@ int main(int argc, char *argv[]) {
         super_app->TraceConnectWithoutContext("Status", MakeCallback(&StatusTraceCallback));
 
         Ptr<ClusterControlClient> app = Ptr<ClusterControlClient> ( dynamic_cast<ClusterControlClient *> (PeekPointer(super_app)) );
-        app->SetClusteringStartTime(Seconds(1.0 + tdmaStart));
-        app->SetClusteringStopTime(Seconds(8.0 + tdmaStart));
+
+        if(!CLUSTERING_DISABLE){
+        	app->SetClusteringStartTime(Seconds(1.0 + tdmaStart));
+        }
+        else{
+        	app->SetClusteringStartTime(Seconds(0.0));
+        }
+        app->SetClusteringStopTime(Seconds(5.0));
+
+//        app->SetClusteringStartTime(Seconds(1.0));
+//        app->SetClusteringStopTime(Seconds(1.0));
+
+
 
         if(u == 0) {
         	app->SetStartingNode(true);
-        	app->SetBasePropagationDirection(Vector(1.0, 0.0, 0.0));
+        	// app->SetBasePropagationDirection(Vector(2.0, 0.0, 0.0));
+        	app->SetBasePropagationDirection(Vector(1.4, 1.4, 0.0));
         }
     }
 
@@ -277,8 +303,25 @@ int main(int argc, char *argv[]) {
     /*--------------------------- Simulation Run ---------------------------*/
     Simulator::Run();
     outputfile.close();
-    std::cout << "IsFinished " << Simulator::IsFinished() << std::endl;
+    // std::cout << "IsFinished " << Simulator::IsFinished() << std::endl;
+
+    int completed_num = 0;
+    for (uint32_t u = 0; u < nodes.GetN(); ++u) {
+        Ptr<Application> super_app = nodes.Get(u)->GetApplication(0);
+        Ptr<ClusterControlClient> app = Ptr<ClusterControlClient> ( dynamic_cast<ClusterControlClient *> (PeekPointer(super_app)) );
+        ClusterControlClient::NodeStatus status = app->GetNodeStatus();
+        if(status == ClusterControlClient::PROPAGATION_COMPLETE){
+        	completed_num++;
+        }
+        else{
+        	//std::cout << u << ", " << status << std::endl;
+        }
+    }
+    std::cout << "propagation_complete: " << completed_num << " total: " << nodes.GetN() << " rate: " << (double)completed_num / (double)nodes.GetN() << ": disableStartingNode :" << std::boolalpha << ClusterControlClient::DISABLE_STARTINGNODE  << std::endl;
+    notefile << "propagation_complete: " << completed_num << " total: " << nodes.GetN() << " rate: " << (double)completed_num / (double)nodes.GetN() << std::endl;
+    notefile.close();
     Simulator::Destroy();
+
     /*----------------------------------------------------------------------*/
 
 //    flowMonitor->SerializeToXmlFile("scratch/flow-mon.xml", true, true);
@@ -382,7 +425,7 @@ Rgb getNewColor(uint8_t differential){
 template<class T> void shuffle(T ary[],int size)
 {
 	static std::random_device rnd;     // 非決定的な乱数生成器を生成
-	static std::mt19937 mt(12345);     //  メルセンヌ・ツイスタの32ビット版、引数は初期シード値
+	static std::mt19937 mt(seed);     //  メルセンヌ・ツイスタの32ビット版、引数は初期シード値
 	std::uniform_int_distribution<> rand(0, size - 1);
 
 	for(int i=0;i<size;i++)
@@ -395,7 +438,7 @@ template<class T> void shuffle(T ary[],int size)
 }
 
 void OutputRender(void){
-	std::cout << "rendered " << (double)Simulator::Now().GetSeconds() << std::endl;
+//	std::cout << "rendered " << (double)Simulator::Now().GetSeconds() << std::endl;
 
 	outputfile << (double)Simulator::Now().GetSeconds() << " ";
 	for(uint32_t i = 0; i < nodes_copy.GetN(); i++){
@@ -413,6 +456,9 @@ void OutputRender(void){
 		}
 		else if(nodeStatus == ClusterControlClient::PROPAGATION_COMPLETE){
 			status = 3;
+		}
+		else if(nodeStatus == ClusterControlClient::ACTIVE){
+			status = 4;
 		}
 
 		Rgb rgb;
